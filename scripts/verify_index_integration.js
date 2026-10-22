@@ -49,7 +49,9 @@ async function run() {
         { desc: 'btnAddSubItem 包含前端明細時段重疊防呆檢驗', pass: /#btnAddSubItem[\s\S]*?isTimeOverlap[\s\S]*?currentSubItems/.test(html) },
         { desc: 'btnUpdateSubItem 包含前端明細時段重疊防呆檢驗', pass: /#btnUpdateSubItem[\s\S]*?isTimeOverlap[\s\S]*?currentSubItems/.test(html) },
         { desc: 'updateSubActionButtonsState 包含過去日期鎖定 btnSubmitPlan 與 btnAddSubItem 防呆', pass: /function\s+updateSubActionButtonsState[\s\S]*?curDate\s*<\s*todayStr[\s\S]*?#btnSubmitPlan,\s*#btnAddSubItem/.test(html) },
-        { desc: 'dispatchDate 變更事件觸發 updateSubActionButtonsState', pass: /#dispatchDate[\s\S]*?updateSubActionButtonsState\(\)/.test(html) }
+        { desc: 'dispatchDate 變更事件觸發 updateSubActionButtonsState', pass: /#dispatchDate[\s\S]*?updateSubActionButtonsState\(\)/.test(html) },
+        { desc: '包含 isExcludedSourceDept 來源廠排除工程部與物流部邏輯', pass: html.includes('function isExcludedSourceDept(') },
+        { desc: 'loadDepartments 將來源廠 (#sourceDept, #filterDept) 排除工程部與物流部', pass: html.includes('sourceDeptList') && html.includes('#filterDept') && html.includes('#sourceDept') }
     ];
 
     let allChecksPassed = true;
@@ -83,8 +85,9 @@ async function run() {
     const normMatch = mainScript.match(/function\s+normalizeTime[\s\S]*?\n        \}/);
     const overlapMatch = mainScript.match(/function\s+isTimeOverlap[\s\S]*?\n        \}/);
     const dedupMatch = mainScript.match(/function\s+deduplicateEmployees[\s\S]*?\n        \}/);
-    if (!normMatch || !overlapMatch || !dedupMatch) {
-        console.error('❌ 未在 index.html 找到 normalizeTime、isTimeOverlap 或 deduplicateEmployees 實作！');
+    const excludedSourceMatch = mainScript.match(/function\s+isExcludedSourceDept[\s\S]*?\n        \}/);
+    if (!normMatch || !overlapMatch || !dedupMatch || !excludedSourceMatch) {
+        console.error('❌ 未在 index.html 找到 normalizeTime、isTimeOverlap、deduplicateEmployees 或 isExcludedSourceDept 實作！');
         process.exit(1);
     }
 
@@ -94,11 +97,13 @@ async function run() {
         ${normMatch[0]}
         ${overlapMatch[0]}
         ${dedupMatch[0]}
+        ${excludedSourceMatch[0]}
         globalThis.isTimeOverlap = isTimeOverlap;
         globalThis.deduplicateEmployees = deduplicateEmployees;
+        globalThis.isExcludedSourceDept = isExcludedSourceDept;
     `, sandbox);
 
-    const { isTimeOverlap, deduplicateEmployees } = sandbox;
+    const { isTimeOverlap, deduplicateEmployees, isExcludedSourceDept } = sandbox;
     if (isTimeOverlap('08:00', '12:00', '13:00', '17:00') !== false) {
         throw new Error('isTimeOverlap 失敗: 08:00~12:00 與 13:00~17:00 應為 false');
     }
@@ -124,7 +129,22 @@ async function run() {
     if (dedupResult.length !== 3 || dedupResult.filter(e => e.id === 'JM10494').length !== 1) {
         throw new Error(`deduplicateEmployees 失敗: 預期 3 筆且 JM10494 僅 1 筆，實際長度 ${dedupResult.length}`);
     }
-    console.log('  ✅ isTimeOverlap 演算法與 deduplicateEmployees 同仁去重檢核全部正確！\n');
+
+    // 驗證來源廠排除工程部與物流部
+    if (!isExcludedSourceDept({ deptId: 'JW001', deptName: '工程部' })) {
+        throw new Error('isExcludedSourceDept 失敗: JW001 工程部 應被判定為排除');
+    }
+    if (!isExcludedSourceDept({ deptId: 'JL001', deptName: '物流部' })) {
+        throw new Error('isExcludedSourceDept 失敗: JL001 物流部 應被判定為排除');
+    }
+    if (isExcludedSourceDept({ deptId: 'JMA01', deptName: 'A12-1廠' })) {
+        throw new Error('isExcludedSourceDept 失敗: JMA01 A12-1廠 不應被判定為排除');
+    }
+    if (isExcludedSourceDept({ deptId: 'JMB03', deptName: 'B10-3廠' })) {
+        throw new Error('isExcludedSourceDept 失敗: JMB03 B10-3廠 不應被判定為排除');
+    }
+
+    console.log('  ✅ isTimeOverlap 演算法、deduplicateEmployees 與 isExcludedSourceDept 來源廠排除檢核全部正確！\n');
 
     // 2. 啟動伺服器進行即時 API 聯調驗證
     console.log(`🚀 [檢核 2] 於 Port ${TEST_PORT} 啟動後端伺服器 (node server.js)...`);

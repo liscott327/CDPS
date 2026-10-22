@@ -646,6 +646,16 @@
         // =========================================================================
 
         /**
+         * 判斷部門是否為排除之來源廠 (來源廠不包含工程部與物流部)
+         */
+        function isExcludedSourceDept(d) {
+            if (!d) return false;
+            const deptId = String(d.deptId || d.id || '').trim().toUpperCase();
+            const deptName = String(d.deptName || d.name || '').trim();
+            return deptId === 'JW001' || deptId === 'JL001' || deptName.includes('工程部') || deptName.includes('物流部');
+        }
+
+        /**
          * 呼叫 GET /api/departments 取得廠別清單
          */
         async function loadDepartments() {
@@ -679,23 +689,32 @@
                 alert('廠別資料讀取失敗，使用本機預設廠別清單');
             }
 
-            // 填充 Select2 多選篩選
-            const optionsHtml = departmentList.map(d =>
+            // 來源廠排除「工程部」與「物流部」
+            const sourceDeptList = departmentList.filter(d => !isExcludedSourceDept(d));
+
+            // 來源廠選項 HTML (排除工程部與物流部)
+            const sourceOptionsHtml = sourceDeptList.map(d =>
                 `<option value="${d.deptId}">${d.deptName || d.deptId}</option>`
             ).join('');
 
-            $('#filterDept').empty().append(optionsHtml).trigger('change');
-            $('#filterTargetDept').empty().append(optionsHtml).trigger('change');
+            // 全廠別選項 HTML (目的廠保留工程部與物流部選項)
+            const allDeptOptionsHtml = departmentList.map(d =>
+                `<option value="${d.deptId}">${d.deptName || d.deptId}</option>`
+            ).join('');
 
-            // 填充單選下拉
-            $('#sourceDept').empty().append(optionsHtml);
+            // 填充 Select2 多選篩選：來源廠排除工程部與物流部；目的廠保留全部選項
+            $('#filterDept').empty().append(sourceOptionsHtml).trigger('change');
+            $('#filterTargetDept').empty().append(allDeptOptionsHtml).trigger('change');
 
-            // 優先設定為當前登入者所屬部門
+            // 填充單選下拉：來源廠排除工程部與物流部
+            $('#sourceDept').empty().append(sourceOptionsHtml);
+
+            // 優先設定為當前登入者所屬部門 (若為工程部或物流部則自動使用第一個合法來源廠)
             const curUser = (typeof Auth !== 'undefined') ? Auth.getUser() : null;
             if (curUser && curUser.deptId && $(`#sourceDept option[value="${curUser.deptId}"]`).length > 0) {
                 $('#sourceDept').val(curUser.deptId);
-            } else if (departmentList.length > 0) {
-                $('#sourceDept').val(departmentList[0].deptId);
+            } else if (sourceDeptList.length > 0) {
+                $('#sourceDept').val(sourceDeptList[0].deptId);
             }
 
             // 互斥排除：初始化目的廠選項，排除目前選定的來源廠
