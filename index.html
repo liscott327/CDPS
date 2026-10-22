@@ -1310,27 +1310,34 @@
 
         function updateSubActionButtonsState() {
             if (isViewOnlyMode) {
-                $('#btnAddSubItem, #btnUpdateSubItem, #btnDeleteSubItem').prop('disabled', true);
+                $('#btnSubmitPlan, #btnAddSubItem, #btnUpdateSubItem, #btnDeleteSubItem').prop('disabled', true);
                 $('#subItemPassedNotice').addClass('d-none');
                 return;
             }
 
-            const curDate = $('#dispatchDate').val();
+            const curDate = ($('#dispatchDate').val() || '').replace(/\//g, '-');
             const now = new Date();
             const pad = (n) => String(n).padStart(2, '0');
             const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 
-            if (curDate < todayStr) {
-                $('#btnAddSubItem, #btnUpdateSubItem, #btnDeleteSubItem').prop('disabled', true);
+            // 若調度日期為過去日期，鎖定「儲存送出」與「新增/修改/刪除」按鈕，不開放新增過去時間的調度單
+            if (curDate && curDate < todayStr) {
+                $('#btnSubmitPlan, #btnAddSubItem, #btnUpdateSubItem, #btnDeleteSubItem').prop('disabled', true);
+                $('#subItemPassedNotice')
+                    .removeClass('d-none')
+                    .find('span')
+                    .text(`調度日期 (${curDate}) 為過去時間，鎖定不可新增或儲存調度單！`);
                 return;
             }
 
+            $('#btnSubmitPlan').prop('disabled', false);
             $('#btnAddSubItem').prop('disabled', false);
             const hasSelection = selectedSubItemSeq !== null;
             if (!hasSelection) {
                 $('#btnUpdateSubItem').prop('disabled', true);
                 $('#btnDeleteSubItem').prop('disabled', true);
                 $('#subItemPassedNotice').addClass('d-none');
+                $('#targetDept, #startTime, #endTime, #purpose, #btnSelectAllEmp, #btnClearAllEmp').prop('disabled', false);
                 return;
             }
 
@@ -1619,12 +1626,13 @@
                 updateDuplicatePlanAlert();
             });
 
-            // 調度日期變更：動態時間預設 + 即時重算人員衝突與單據重複提示
-            $('#dispatchDate').on('change', async function () {
+            // 調度日期變更：動態時間預設 + 過去日期按鈕鎖定 + 即時重算人員衝突與單據重複提示
+            $('#dispatchDate').on('change input', async function () {
                 const val = $(this).val();
                 if (!editingPlanId) {
                     setDefaultTimeForDate(val);
                 }
+                updateSubActionButtonsState();
                 await refreshPersonnelStatusPreserveChecked();
                 updateDuplicatePlanAlert();
             });
@@ -1798,16 +1806,22 @@
 
             // 【儲存整張調度單】(新增 POST / 修改 PUT)
             $('#btnSubmitPlan, #btnSavePlan').on('click', async function () {
-                if (currentSubItems.length === 0) {
-                    alert('請至少新增一筆支援調度明細後再儲存送出！');
-                    return;
-                }
-
-                const mainDate = $('#dispatchDate').val();
+                const mainDate = ($('#dispatchDate').val() || '').replace(/\//g, '-');
                 const mainSource = $('#sourceDept').val();
 
                 if (!mainDate || !mainSource) {
                     alert('請提供調度日期與來源廠別！');
+                    return;
+                }
+
+                if (isPastDate(mainDate)) {
+                    alert(`調度日期不可早於今日 (${mainDate})！不允許新增或儲存過去時間的調度單。`);
+                    updateSubActionButtonsState();
+                    return;
+                }
+
+                if (currentSubItems.length === 0) {
+                    alert('請至少新增一筆支援調度明細後再儲存送出！');
                     return;
                 }
 
@@ -1856,6 +1870,7 @@
                     alert(err.message || '儲存調度單失敗，請重試！');
                 } finally {
                     $btn.prop('disabled', false);
+                    updateSubActionButtonsState();
                 }
             });
 

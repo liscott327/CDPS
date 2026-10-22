@@ -47,7 +47,9 @@ async function run() {
         { desc: '包含非重疊時段同仁之提示 badge (今日已排與 bi-clock-history)', pass: html.includes('今日已排') && html.includes('bi-clock-history') },
         { desc: '包含時段衝突同仁之鎖定 badge (已被排定至與 bi-lock-fill)', pass: html.includes('已被排定至') && html.includes('bi-lock-fill') },
         { desc: 'btnAddSubItem 包含前端明細時段重疊防呆檢驗', pass: /#btnAddSubItem[\s\S]*?isTimeOverlap[\s\S]*?currentSubItems/.test(html) },
-        { desc: 'btnUpdateSubItem 包含前端明細時段重疊防呆檢驗', pass: /#btnUpdateSubItem[\s\S]*?isTimeOverlap[\s\S]*?currentSubItems/.test(html) }
+        { desc: 'btnUpdateSubItem 包含前端明細時段重疊防呆檢驗', pass: /#btnUpdateSubItem[\s\S]*?isTimeOverlap[\s\S]*?currentSubItems/.test(html) },
+        { desc: 'updateSubActionButtonsState 包含過去日期鎖定 btnSubmitPlan 與 btnAddSubItem 防呆', pass: /function\s+updateSubActionButtonsState[\s\S]*?curDate\s*<\s*todayStr[\s\S]*?#btnSubmitPlan,\s*#btnAddSubItem/.test(html) },
+        { desc: 'dispatchDate 變更事件觸發 updateSubActionButtonsState', pass: /#dispatchDate[\s\S]*?updateSubActionButtonsState\(\)/.test(html) }
     ];
 
     let allChecksPassed = true;
