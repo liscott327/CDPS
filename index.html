@@ -571,6 +571,23 @@
         }
 
         /**
+         * 確保同一時段或清單內人員不因多技能或多職稱而重複出現 (以工號去重)
+         */
+        function deduplicateEmployees(empList) {
+            if (!Array.isArray(empList)) return [];
+            const seen = new Set();
+            const uniqueList = [];
+            for (const e of empList) {
+                if (!e) continue;
+                const empKey = String(e.userID || e.id || e.empId || '').trim().toUpperCase();
+                if (!empKey || seen.has(empKey)) continue;
+                seen.add(empKey);
+                uniqueList.push(e);
+            }
+            return uniqueList;
+        }
+
+        /**
          * 依據調度日期動態設定預設起訖時間
          * - 未來日期：預設 08:00 ~ 17:00
          * - 今天：起時動態取下一個整點/半點至 17:00 (超過 17:00 則至 23:59)
@@ -726,18 +743,19 @@
                 }
 
                 if (Array.isArray(res) && res.length > 0) {
-                    employees = res.map(e => ({
-                        id: e.userID || e.id || e.empId,
+                    const mapped = res.map(e => ({
+                        id: String(e.userID || e.id || e.empId || '').trim(),
                         name: e.userName || e.name,
                         title: e.functionDefinitionName || e.title || '同仁'
                     }));
+                    employees = deduplicateEmployees(mapped);
                 }
             } catch (err) {
                 console.warn('[Employee] 查詢人員失敗:', err);
             }
 
             if (employees.length === 0 && fallbackEmployeePool[deptId]) {
-                employees = fallbackEmployeePool[deptId];
+                employees = deduplicateEmployees(fallbackEmployeePool[deptId]);
             }
 
             departmentEmployeesCache[deptId] = employees;
@@ -904,7 +922,8 @@
                             if (displayedItems.length === 0) return '<span class="text-muted small">無符合篩選之時段</span>';
 
                             return displayedItems.map(item => {
-                                const empNames = (item.employees || []).map(e => `[${e.id || e.empId}] ${e.name}`).join(', ');
+                                const uniqueEmps = deduplicateEmployees(item.employees || []);
+                                const empNames = uniqueEmps.map(e => `[${e.id || e.empId}] ${e.name}`).join(', ');
                                 const purposeHtml = item.purpose ? `<span class="fw-semibold text-secondary me-1">【${item.purpose}】</span>` : '';
                                 const targetDisplayName = item.targetDeptName || item.targetDept || item.targetDeptId;
                                 return `<div class="small mb-1">
@@ -993,8 +1012,9 @@
                         title: '同仁清單',
                         align: 'start',
                         formatter: function (value) {
-                            if (!value || value.length === 0) return '';
-                            return value.map(e => `[${e.id || e.empId}] ${e.name}`).join(',<br>');
+                            const uniqueEmps = deduplicateEmployees(value || []);
+                            if (uniqueEmps.length === 0) return '';
+                            return uniqueEmps.map(e => `[${e.id || e.empId}] ${e.name}`).join(',<br>');
                         }
                     }
                 ],
@@ -1030,7 +1050,8 @@
         // 5. 人員清單渲染與衝突即時檢測
         // =========================================================================
         async function renderPersonnelChecklist(dept, checkedIds = []) {
-            const list = await loadEmployeesForDepartment(dept);
+            const rawList = await loadEmployeesForDepartment(dept);
+            const list = deduplicateEmployees(rawList);
             const $container = $('#personnelListContainer');
             $container.empty();
 
@@ -1174,13 +1195,13 @@
             const selected = [];
             $('.emp-checkbox:checked:not(:disabled)').each(function () {
                 selected.push({
-                    id: $(this).val(),
-                    empId: $(this).val(),
+                    id: String($(this).val() || '').trim(),
+                    empId: String($(this).val() || '').trim(),
                     name: $(this).data('name'),
                     title: $(this).data('title')
                 });
             });
-            return selected;
+            return deduplicateEmployees(selected);
         }
 
         function updateSelectedEmpCount() {
@@ -1389,14 +1410,14 @@
                     startTime: item.startTime,
                     endTime: item.endTime,
                     purpose: item.purpose || '',
-                    employees: (item.employees || []).map(e => ({
+                    employees: deduplicateEmployees((item.employees || []).map(e => ({
                         id: e.empId || e.id,
                         empId: e.empId || e.id,
                         name: e.name || e.empName,
                         title: e.title || e.empTitle || '同仁',
                         deptName: e.deptName || e.empDeptName,
                         checkInStatus: e.checkInStatus
-                    }))
+                    })))
                 }));
 
                 selectedSubItemSeq = null;
@@ -1567,13 +1588,13 @@
                         startTime: it.startTime,
                         endTime: it.endTime,
                         purpose: it.purpose || '',
-                        employees: (it.employees || []).map(e => ({
+                        employees: deduplicateEmployees((it.employees || []).map(e => ({
                             id: e.empId || e.id,
                             empId: e.empId || e.id,
                             name: e.name || e.empName,
                             title: e.title || e.empTitle || '同仁',
                             deptName: e.deptName || e.empDeptName
-                        }))
+                        })))
                     }))
                 }));
 

@@ -151,7 +151,7 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                     FROM CustCPDSDispatchPlan_Detail d
                     INNER JOIN CustCPDSDispatchPlan_Item i ON i.ItemId = d.ItemId
                     INNER JOIN CustCPDSDispatchPlan_Master m ON m.PlanNo = i.PlanNo
-                    LEFT JOIN vw_ActiveUserMainFunction emp ON emp.userID = d.EmpId
+                    OUTER APPLY (SELECT TOP 1 userName FROM vw_ActiveUserMainFunction WHERE userID = d.EmpId) emp
                     LEFT JOIN vw_CPDS_Dept sd ON sd.DeptId = m.SourceDeptId
                     LEFT JOIN vw_CPDS_Dept td ON td.DeptId = i.TargetDeptId
                     WHERE d.DispatchDate = @dispatchDate
@@ -318,11 +318,11 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                         d.CheckInStatus AS checkInStatus
                     FROM CustCPDSDispatchPlan_Master m
                     LEFT JOIN vw_CPDS_Dept sd ON sd.DeptId = m.SourceDeptId
-                    LEFT JOIN vw_ActiveUserMainFunction cuser ON cuser.userID = m.CreateUser
+                    OUTER APPLY (SELECT TOP 1 userName FROM vw_ActiveUserMainFunction WHERE userID = m.CreateUser) cuser
                     LEFT JOIN CustCPDSDispatchPlan_Item i ON i.PlanNo = m.PlanNo
                     LEFT JOIN vw_CPDS_Dept td ON td.DeptId = i.TargetDeptId
                     LEFT JOIN CustCPDSDispatchPlan_Detail d ON d.ItemId = i.ItemId
-                    LEFT JOIN vw_ActiveUserMainFunction emp ON emp.userID = d.EmpId
+                    OUTER APPLY (SELECT TOP 1 userName, functionDefinitionName, organizationUnitName FROM vw_ActiveUserMainFunction WHERE userID = d.EmpId) emp
                     WHERE ${whereClauses.join(' AND ')}
                     ORDER BY m.DispatchDate DESC, m.PlanNo DESC, i.Seq ASC, d.DetailId ASC
                 `;
@@ -368,15 +368,19 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
 
                         if (row.empId != null) {
                             const itemObj = plan.itemsMap.get(row.itemId);
-                            itemObj.employees.push({
-                                detailId: row.detailId,
-                                empId: row.empId,
-                                name: row.empName,
-                                title: row.empTitle,
-                                deptName: row.empDeptName,
-                                checkInStatus: row.checkInStatus
-                            });
-                            plan.totalEmpCount += 1;
+                            const empKey = String(row.empId).trim().toUpperCase();
+                            const alreadyExists = itemObj.employees.some(e => String(e.empId).trim().toUpperCase() === empKey);
+                            if (!alreadyExists) {
+                                itemObj.employees.push({
+                                    detailId: row.detailId,
+                                    empId: row.empId,
+                                    name: row.empName,
+                                    title: row.empTitle,
+                                    deptName: row.empDeptName,
+                                    checkInStatus: row.checkInStatus
+                                });
+                                plan.totalEmpCount += 1;
+                            }
                         }
                     }
                 }
@@ -466,11 +470,11 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                         d.CheckInStatus AS checkInStatus
                     FROM CustCPDSDispatchPlan_Master m
                     LEFT JOIN vw_CPDS_Dept sd ON sd.DeptId = m.SourceDeptId
-                    LEFT JOIN vw_ActiveUserMainFunction cuser ON cuser.userID = m.CreateUser
+                    OUTER APPLY (SELECT TOP 1 userName FROM vw_ActiveUserMainFunction WHERE userID = m.CreateUser) cuser
                     LEFT JOIN CustCPDSDispatchPlan_Item i ON i.PlanNo = m.PlanNo
                     LEFT JOIN vw_CPDS_Dept td ON td.DeptId = i.TargetDeptId
                     LEFT JOIN CustCPDSDispatchPlan_Detail d ON d.ItemId = i.ItemId
-                    LEFT JOIN vw_ActiveUserMainFunction emp ON emp.userID = d.EmpId
+                    OUTER APPLY (SELECT TOP 1 userName, functionDefinitionName, organizationUnitName FROM vw_ActiveUserMainFunction WHERE userID = d.EmpId) emp
                     WHERE m.PlanNo = @planNo
                     ORDER BY i.Seq ASC, d.DetailId ASC
                 `;
@@ -520,15 +524,19 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
 
                         if (row.empId != null) {
                             const item = itemsMap.get(row.itemId);
-                            item.employees.push({
-                                detailId: row.detailId,
-                                empId: row.empId,
-                                name: row.empName,
-                                title: row.empTitle,
-                                deptName: row.empDeptName,
-                                checkInStatus: row.checkInStatus
-                            });
-                            planObj.totalEmpCount += 1;
+                            const empKey = String(row.empId).trim().toUpperCase();
+                            const alreadyExists = item.employees.some(e => String(e.empId).trim().toUpperCase() === empKey);
+                            if (!alreadyExists) {
+                                item.employees.push({
+                                    detailId: row.detailId,
+                                    empId: row.empId,
+                                    name: row.empName,
+                                    title: row.empTitle,
+                                    deptName: row.empDeptName,
+                                    checkInStatus: row.checkInStatus
+                                });
+                                planObj.totalEmpCount += 1;
+                            }
                         }
                     }
                 }
@@ -682,7 +690,7 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                         FROM CustCPDSDispatchPlan_Detail d
                         INNER JOIN CustCPDSDispatchPlan_Item i ON i.ItemId = d.ItemId
                         INNER JOIN CustCPDSDispatchPlan_Master m ON m.PlanNo = i.PlanNo
-                        LEFT JOIN vw_ActiveUserMainFunction emp ON emp.userID = d.EmpId
+                        OUTER APPLY (SELECT TOP 1 userName FROM vw_ActiveUserMainFunction WHERE userID = d.EmpId) emp
                         LEFT JOIN vw_CPDS_Dept sd ON sd.DeptId = m.SourceDeptId
                         LEFT JOIN vw_CPDS_Dept td ON td.DeptId = i.TargetDeptId
                         WHERE d.DispatchDate = @dispatchDate
@@ -997,7 +1005,7 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                         FROM CustCPDSDispatchPlan_Detail d
                         INNER JOIN CustCPDSDispatchPlan_Item i ON i.ItemId = d.ItemId
                         INNER JOIN CustCPDSDispatchPlan_Master m ON m.PlanNo = i.PlanNo
-                        LEFT JOIN vw_ActiveUserMainFunction emp ON emp.userID = d.EmpId
+                        OUTER APPLY (SELECT TOP 1 userName FROM vw_ActiveUserMainFunction WHERE userID = d.EmpId) emp
                         LEFT JOIN vw_CPDS_Dept sd ON sd.DeptId = m.SourceDeptId
                         LEFT JOIN vw_CPDS_Dept td ON td.DeptId = i.TargetDeptId
                         WHERE d.DispatchDate = @dispatchDate

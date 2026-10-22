@@ -78,10 +78,11 @@ async function run() {
         }
     }
 
-    const normMatch = mainScript.match(/function\s+normalizeTime[\s\S]*?\n\s*\}/);
-    const overlapMatch = mainScript.match(/function\s+isTimeOverlap[\s\S]*?\n\s*\}/);
-    if (!normMatch || !overlapMatch) {
-        console.error('❌ 未在 index.html 找到 normalizeTime 或 isTimeOverlap 實作！');
+    const normMatch = mainScript.match(/function\s+normalizeTime[\s\S]*?\n        \}/);
+    const overlapMatch = mainScript.match(/function\s+isTimeOverlap[\s\S]*?\n        \}/);
+    const dedupMatch = mainScript.match(/function\s+deduplicateEmployees[\s\S]*?\n        \}/);
+    if (!normMatch || !overlapMatch || !dedupMatch) {
+        console.error('❌ 未在 index.html 找到 normalizeTime、isTimeOverlap 或 deduplicateEmployees 實作！');
         process.exit(1);
     }
 
@@ -90,10 +91,12 @@ async function run() {
     vm.runInContext(`
         ${normMatch[0]}
         ${overlapMatch[0]}
+        ${dedupMatch[0]}
         globalThis.isTimeOverlap = isTimeOverlap;
+        globalThis.deduplicateEmployees = deduplicateEmployees;
     `, sandbox);
 
-    const { isTimeOverlap } = sandbox;
+    const { isTimeOverlap, deduplicateEmployees } = sandbox;
     if (isTimeOverlap('08:00', '12:00', '13:00', '17:00') !== false) {
         throw new Error('isTimeOverlap 失敗: 08:00~12:00 與 13:00~17:00 應為 false');
     }
@@ -106,7 +109,20 @@ async function run() {
     if (isTimeOverlap('08:00', '17:00', '09:00', '12:00') !== true) {
         throw new Error('isTimeOverlap 失敗: 08:00~17:00 與 09:00~12:00 包含關係應為 true');
     }
-    console.log('  ✅ isTimeOverlap 演算法邊界與重疊檢核全部正確！\n');
+
+    // 驗證同一時段重複同仁去重 (如鍾佩伶 JM10494 重複出現多次應合併為 1 筆)
+    const dupTestInput = [
+        { id: 'JM10005', name: '陳玉香' },
+        { id: 'JM10494', name: '鍾佩伶' },
+        { id: 'JM10494', name: '鍾佩伶' },
+        { id: 'JM10494', name: '鍾佩伶' },
+        { id: 'JM10528', name: '汪雪梅' }
+    ];
+    const dedupResult = deduplicateEmployees(dupTestInput);
+    if (dedupResult.length !== 3 || dedupResult.filter(e => e.id === 'JM10494').length !== 1) {
+        throw new Error(`deduplicateEmployees 失敗: 預期 3 筆且 JM10494 僅 1 筆，實際長度 ${dedupResult.length}`);
+    }
+    console.log('  ✅ isTimeOverlap 演算法與 deduplicateEmployees 同仁去重檢核全部正確！\n');
 
     // 2. 啟動伺服器進行即時 API 聯調驗證
     console.log(`🚀 [檢核 2] 於 Port ${TEST_PORT} 啟動後端伺服器 (node server.js)...`);
