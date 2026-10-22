@@ -1,0 +1,1863 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>人員跨廠支援調度單 - CPDS</title>
+
+    <!--已經將BPM樣式表單改為index.html-->
+    <!--TODO:需參考todo delete/index.html 的登入框架，將相關功能整合-->
+
+    <!-- 1. Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 2. Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.css">
+    <!-- 3. AdminLTE 4 CSS -->
+    <!-- <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta2/dist/css/adminlte.min.css"> -->
+    <!-- 4. Bootstrap-Table CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-table@1.22.1/dist/bootstrap-table.min.css">
+    <!-- 5. Flatpickr CSS (強制 24 小時制時間選擇器) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- 6. Select2 CSS & Bootstrap 5 Theme -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">
+    <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css">
+
+    <style>
+        /* Select2 Bootstrap 5 多選樣式微調 (比照 report.html 與截圖) */
+        .select2-container--bootstrap-5 .select2-selection--multiple {
+            min-height: 38px;
+        }
+
+        .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
+            font-size: 0.85rem;
+            padding: 2px 6px;
+        }
+
+        /* 確保下拉選單向下展開對齊 */
+        .select2-container--bootstrap-5.select2-container--open .select2-dropdown {
+            border-top: none;
+            border-top-left-radius: 0;
+            border-top-right-radius: 0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            background-color: #f4f6f9;
+            font-family: "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif;
+        }
+
+        .card-header-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+
+        .filter-card {
+            border-top: 3px solid #0d6efd;
+        }
+
+        .create-card {
+            border-top: 3px solid #198754;
+        }
+
+        /* 模擬 Excel 橘色表頭風格與清晰邊框 */
+        .excel-thead th {
+            background-color: #f8cbad !important;
+            color: #212529 !important;
+            font-weight: 600;
+            border-color: #dee2e6 !important;
+        }
+
+        /* 人員挑選清單容器 */
+        .personnel-box {
+            max-height: 220px;
+            overflow-y: auto;
+            background-color: #ffffff;
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+        }
+
+        .personnel-item {
+            padding: 0.45rem 0.75rem;
+            border-bottom: 1px solid #f1f3f5;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+
+        .personnel-item:last-child {
+            border-bottom: none;
+        }
+
+        .personnel-item:hover:not(.disabled-item) {
+            background-color: #f8f9fa;
+        }
+
+        .personnel-item input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        /* 已被調派人員的禁用樣式 */
+        .personnel-item.disabled-item {
+            background-color: #f8f9fa;
+            cursor: not-allowed;
+        }
+
+        .personnel-item.disabled-item input[type="checkbox"] {
+            cursor: not-allowed;
+        }
+
+        /* 子表格選取列高亮樣式 (對應 Excel 灰色選取列) */
+        #subItemTable tbody tr {
+            cursor: pointer;
+        }
+
+        #subItemTable tbody tr.selected-row>td {
+            background-color: #d9d9d9 !important;
+            font-weight: 600;
+        }
+
+        /* 24小時制時間輸入框游標與背景微調 */
+        .timepicker-24hr {
+            background-color: #fff !important;
+            cursor: pointer;
+        }
+
+        .timepicker-24hr:disabled,
+        #dispatchDate:disabled,
+        #sourceDept:disabled {
+            background-color: #e9ecef !important;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body class="layout-fixed">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm py-2">
+        <div class="container px-4">
+            <a class="navbar-brand d-flex align-items-center" href="index.html">
+                <i class="bi bi-arrow-left-right text-primary me-2 fs-5"></i>
+                <span>CPDS 跨廠人員調度與簽到點收系統</span>
+            </a>
+
+            <!-- 導覽列選單切換按鈕 (RWD 手機版) -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMainCollapse"
+                aria-controls="navbarMainCollapse" aria-expanded="false" aria-label="切換選單">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarMainCollapse">
+                <!-- 功能選單項目 (調度 / 簽到 / 報表) -->
+                <ul class="navbar-nav navbar-nav-tabs me-auto ms-lg-4 mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active d-flex align-items-center" href="index.html" "="">
+                            <i class=" bi bi-arrow-left-right me-1"></i>調度
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link d-flex align-items-center" aria-current="page" href="checkin.html">
+                            <i class="bi bi-clipboard-check me-1"></i>簽到
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link d-flex align-items-center" href="report.html">
+                            <i class="bi bi-file-earmark-bar-graph me-1"></i>報表
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- 使用者身分資訊與登出按鈕注入點 -->
+                <div id="navbarUserArea" class="ms-lg-auto">
+
+                </div>
+            </div>
+        </div>
+    </nav>
+    <div class="app-wrapper">
+        <main class="app-main">
+            <div class="app-content py-4 px-3">
+                <div class="container">
+
+                    <!-- ========================================================================= -->
+                    <!-- 【上半部：支援調度列表 (查詢篩選 + Bootstrap-Table)】 -->
+                    <!-- ========================================================================= -->
+                    <div class="card shadow-sm mb-4 filter-card">
+                        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                            <span class="card-header-title">
+                                <i class="bi bi-table text-primary me-2"></i>支援調度列表
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            <!-- 篩選條件表單工具列 -->
+                            <form id="filterForm" class="row g-2 mb-3 align-items-end">
+                                <div class="col-md-2 col-sm-6">
+                                    <label class="form-label small fw-bold text-secondary mb-1">調度日期(起)</label>
+                                    <input type="date" class="form-control form-control-sm" id="filterStartDate">
+                                </div>
+                                <div class="col-md-2 col-sm-6">
+                                    <label class="form-label small fw-bold text-secondary mb-1">調度日期(訖)</label>
+                                    <input type="date" class="form-control form-control-sm" id="filterEndDate">
+                                </div>
+                                <div class="col-md-2 col-sm-6">
+                                    <label class="form-label small fw-bold text-secondary mb-1">來源廠</label>
+                                    <select class="form-select form-select-sm" id="filterDept" multiple="multiple"
+                                        data-placeholder="請選擇來源廠...">
+                                    </select>
+                                </div>
+                                <div class="col-md-2 col-sm-6">
+                                    <label class="form-label small fw-bold text-secondary mb-1">目的廠</label>
+                                    <select class="form-select form-select-sm" id="filterTargetDept" multiple="multiple"
+                                        data-placeholder="請選擇目的廠...">
+                                    </select>
+                                </div>
+                                <div class="col-md-2 col-sm-6">
+                                    <label class="form-label small fw-bold text-secondary mb-1">調度時間(起~訖)</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control text-center timepicker-24hr"
+                                            id="filterStartTime" placeholder="起 HH:mm">
+                                        <span class="input-group-text px-1 bg-light">~</span>
+                                        <input type="text" class="form-control text-center timepicker-24hr"
+                                            id="filterEndTime" placeholder="訖 HH:mm">
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-6">
+                                    <label class="form-label small fw-bold text-secondary mb-1">關鍵字搜尋</label>
+                                    <div class="input-group input-group-sm">
+                                        <input type="text" class="form-control" id="filterKeyword"
+                                            placeholder="搜尋用途/工號/姓名...">
+                                        <button type="button" class="btn btn-primary px-2" id="btnFilterQuery"
+                                            title="查詢">
+                                            <i class="bi bi-search"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary px-2" id="btnFilterReset"
+                                            title="重設">
+                                            <i class="bi bi-arrow-counterclockwise"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </form>
+
+                            <!-- 支援調度主清單 Bootstrap-Table -->
+                            <table id="dispatchListTable" class="table table-bordered table-hover align-middle mb-0">
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- ========================================================================= -->
+                    <!-- 【下半部：新增支援調度 (表單編輯 + 人員挑選 + 明細 Bootstrap-Table)】 -->
+                    <!-- ========================================================================= -->
+                    <div class="card shadow-sm create-card" id="editorCard">
+                        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-3">
+                                <span class="card-header-title text-success" id="createCardTitle">
+                                    <i class="bi bi-plus-circle-fill text-success me-2"></i>新增支援調度
+                                </span>
+                                <button type="button" class="btn btn-primary btn-sm px-3 fw-semibold shadow-sm"
+                                    id="btnSubmitPlan" title="儲存調度單">
+                                    <i class="bi bi-cloud-upload-fill me-1"></i>儲存送出
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm px-3"
+                                    id="btnCancelPlanEdit" style="display: none;">
+                                    <i class="bi bi-arrow-return-left me-1"></i>返回新增模式
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="card-body">
+                            <!-- 各廠每日調度單重複即時警示 -->
+                            <div id="duplicatePlanAlert"
+                                class="alert alert-warning py-1 px-3 mb-2 small fw-semibold d-none" role="alert">
+                                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                <span id="duplicatePlanAlertText">已建立過該日期廠別的調度單</span>
+                            </div>
+
+                            <!-- 時段過期不可編輯醒目提示 -->
+                            <div id="subItemPassedNotice"
+                                class="alert alert-danger py-1 px-3 mb-2 small fw-semibold d-none" role="alert">
+                                <i class="bi bi-lock-fill me-1"></i>
+                                <span>此時段已過去，鎖定不可修改或刪除！</span>
+                            </div>
+
+                            <!-- 1. 調度條件與時間設定列 -->
+                            <form id="itemInputForm">
+                                <div class="table-responsive mb-3">
+                                    <table class="table table-bordered align-middle mb-0">
+                                        <thead class="excel-thead text-center small">
+                                            <tr>
+                                                <th style="width: 15%;">調度日期 <span class="text-danger">*</span></th>
+                                                <th style="width: 15%;">來源廠 <span class="text-danger">*</span></th>
+                                                <th style="width: 15%;">目的廠 <span class="text-danger">*</span></th>
+                                                <th style="width: 14%;">調度時間(起) <span class="text-danger">*</span></th>
+                                                <th style="width: 14%;">調度時間(訖) <span class="text-danger">*</span></th>
+                                                <th style="width: 27%;">用途</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr>
+                                                <td>
+                                                    <input type="date" class="form-control form-control-sm text-center"
+                                                        id="dispatchDate" required>
+                                                </td>
+                                                <td>
+                                                    <select class="form-select form-select-sm text-center"
+                                                        id="sourceDept" required>
+                                                    </select>
+                                                </td>
+                                                <td>
+                                                    <select class="form-select form-select-sm text-center"
+                                                        id="targetDept" required>
+                                                        <option value="" selected>請選擇目的廠...</option>
+                                                    </select>
+                                                </td>
+                                                <td>
+                                                    <input type="text"
+                                                        class="form-control form-control-sm text-center timepicker-24hr"
+                                                        id="startTime" value="10:00" placeholder="HH:mm" required>
+                                                </td>
+                                                <td>
+                                                    <input type="text"
+                                                        class="form-control form-control-sm text-center timepicker-24hr"
+                                                        id="endTime" value="11:00" placeholder="HH:mm" required>
+                                                </td>
+                                                <td>
+                                                    <input type="text" class="form-control form-control-sm" id="purpose"
+                                                        value="" placeholder="請輸入支援用途說明...">
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <!-- 2. 挑選支援人員區塊 -->
+                                <div class="card border mb-3 shadow-none">
+                                    <div
+                                        class="card-header bg-light py-2 d-flex justify-content-between align-items-center">
+                                        <span class="fw-bold small text-dark">
+                                            <i class="bi bi-people-fill text-primary me-1"></i>挑選支援人員
+                                            <span
+                                                class="text-secondary fw-normal ms-2">(系統會自動依上方「調度日期與起訖時間」檢測人員是否已調派他廠)</span>
+                                        </span>
+                                        <span class="text-muted small" id="selectedEmpCountText">已勾選 0 位人員</span>
+                                    </div>
+                                    <div class="card-body p-0">
+                                        <!-- 人員篩選列 -->
+                                        <div class="row g-0 border-bottom align-items-center bg-white">
+                                            <div
+                                                class="col-md-2 col-4 py-2 px-3 bg-light border-end fw-semibold small text-secondary">
+                                                人員篩選
+                                            </div>
+                                            <div class="col-md-10 col-8 p-1 px-2">
+                                                <div class="input-group input-group-sm">
+                                                    <span class="input-group-text bg-transparent border-0"><i
+                                                            class="bi bi-search text-muted"></i></span>
+                                                    <input type="text" class="form-control border-0 shadow-none"
+                                                        id="searchEmpInput" placeholder="輸入員工編號、姓名或職稱即時過濾...">
+                                                    <button class="btn btn-outline-secondary btn-sm rounded"
+                                                        type="button" id="btnSelectAllEmp">全選可用</button>
+                                                    <button class="btn btn-outline-secondary btn-sm rounded ms-1"
+                                                        type="button" id="btnClearAllEmp">清除</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- 人員核取方塊列表 -->
+                                        <div class="personnel-box border-0 rounded-0" id="personnelListContainer">
+                                            <!-- 由 JS 動態渲染 -->
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 3. 子明細操作按鈕列 (新增 / 修改 / 刪除) -->
+                                <div class="d-flex justify-content-end align-items-center gap-2 mb-2"
+                                    id="subActionButtons">
+                                    <span class="text-muted small me-auto">
+                                        <i class="bi bi-info-circle me-1"></i>點擊下方表格資料列可帶入上方表單進行「修改」或「刪除」（再次點擊同列可取消選取）
+                                    </span>
+                                    <button type="button" class="btn btn-outline-success btn-sm px-4 fw-semibold"
+                                        id="btnAddSubItem">
+                                        <i class="bi bi-plus-lg me-1"></i>新增
+                                    </button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm px-4 fw-semibold"
+                                        id="btnUpdateSubItem" disabled>
+                                        <i class="bi bi-pencil-square me-1"></i>修改
+                                    </button>
+                                    <button type="button" class="btn btn-outline-danger btn-sm px-4 fw-semibold"
+                                        id="btnDeleteSubItem" disabled>
+                                        <i class="bi bi-trash3 me-1"></i>刪除
+                                    </button>
+                                </div>
+                            </form>
+
+                            <!-- 4. 支援調度明細 Bootstrap-Table -->
+                            <table id="subItemTable" class="table table-bordered align-middle mb-0"></table>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 引入必要 JS 套件 -->
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+    <!-- 引入 Select2 JS & 繁體中文語系 -->
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/zh-TW.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- <script src="https://cdn.jsdelivr.net/npm/admin-lte@4.0.0-beta2/dist/js/adminlte.min.js"></script> -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap-table@1.22.1/dist/bootstrap-table.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap-table@1.22.1/dist/locale/bootstrap-table-zh-TW.min.js"></script>
+    <!-- 引入 Flatpickr JS (強制 24 小時制時間選擇器) -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+    <!-- CPDS 驗證模組與 API Client -->
+    <script src="scripts/auth.js"></script>
+    <script src="scripts/api.js"></script>
+
+    <script>
+        // =========================================================================
+        // 1. 全域變數與狀態宣告
+        // =========================================================================
+        let masterDispatchList = [];
+        let currentSubItems = [];
+        let selectedSubItemSeq = null; // 當前選取之明細順序 (null 表示未選取明細)
+        let editingPlanId = null;      // 正在編輯之調度單號 (null 表示新增模式)
+        let isViewOnlyMode = false;
+
+        // 部門與人員快取
+        let departmentList = [];
+        const departmentEmployeesCache = {};
+
+        // 離線備用同仁池
+        const fallbackEmployeePool = {
+            'OU_A51_IT': [
+                { id: 'JM30448', name: '李奕諴', title: '軟體工程師' }
+            ],
+            'OU_A51_MFG': [
+                { id: 'A0123', name: '王大明', title: '組長' },
+                { id: 'A0145', name: '李小華', title: '技術員' },
+                { id: 'B0211', name: '陳大文', title: '品檢專員' }
+            ],
+            'JMB03': [
+                { id: 'JM11504', name: '沈佳承', title: '作業員' }
+            ],
+            'JMB02': [
+                { id: 'JM11237', name: '王少清', title: '領班' }
+            ],
+            'A5-1廠': [
+                { id: 'JM10069', name: '陳家羚', title: '作業員' },
+                { id: 'JM10099', name: '張秀燕', title: '小組長' },
+                { id: 'JM10206', name: '江佩芬', title: '作業員' },
+                { id: 'JM10179', name: '莊麗勤', title: '作業員' },
+                { id: 'JM10305', name: '許志豪', title: '技術員' }
+            ]
+        };
+
+        // Flatpickr 實例
+        let fpStartTime = null;
+        let fpEndTime = null;
+        let fpFilterStartTime = null;
+        let fpFilterEndTime = null;
+
+        // 輔助函式：判斷時段是否重疊/交集
+        function isTimeRangeOverlap(itemStart, itemEnd, filterStart, filterEnd) {
+            if (!filterStart && !filterEnd) return true;
+            if (filterStart && !filterEnd) return itemEnd > filterStart;
+            if (!filterStart && filterEnd) return itemStart < filterEnd;
+            return (itemStart < filterEnd && itemEnd > filterStart);
+        }
+
+        // =========================================================================
+        // 2. 頁面初始化
+        // =========================================================================
+        $(document).ready(async function () {
+            // 2.1 身分驗證守門員
+            if (typeof Auth !== 'undefined') {
+                if (!Auth.requireAuth('login.html')) return;
+                Auth.renderNavbarUser('#navbarUserArea');
+            }
+
+            // 2.2 設定預設日期 (篩選區間與調度日)
+            initDefaultDates();
+
+            // 2.3 初始化 Select2 多選下拉
+            $('#filterDept').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                language: 'zh-TW',
+                allowClear: true,
+                placeholder: '請選擇來源廠...'
+            });
+
+            $('#filterTargetDept').select2({
+                theme: 'bootstrap-5',
+                width: '100%',
+                language: 'zh-TW',
+                allowClear: true,
+                placeholder: '請選擇目的廠...'
+            });
+
+            // 2.4 初始化 24 小時制時間選單與表格
+            initTimePickers();
+            initMasterTable();
+            initSubItemTable();
+
+            // 2.5 載入組織廠別清單
+            await loadDepartments();
+
+            // 2.6 載入預設來源廠人員清單
+            const curDept = $('#sourceDept').val();
+            if (curDept) {
+                await loadEmployeesForDepartment(curDept);
+                await renderPersonnelChecklist(curDept, []);
+            }
+
+            // 2.7 綁定事件監聽
+            bindEvents();
+            updateSubActionButtonsState();
+            updateDuplicatePlanAlert();
+
+            // 2.8 查詢並載入上半部調度單清單
+            await applyMasterFilter();
+        });
+
+        // 初始化預設日期 (查詢起訖帶入 今天 + 1天 即明日)
+        function initDefaultDates() {
+            const today = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const toYmd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const tomorrowStr = toYmd(tomorrow);
+
+            if (!$('#filterStartDate').val()) {
+                $('#filterStartDate').val(tomorrowStr);
+            }
+            if (!$('#filterEndDate').val()) {
+                $('#filterEndDate').val(tomorrowStr);
+            }
+            if (!$('#dispatchDate').val()) {
+                $('#dispatchDate').val(tomorrowStr);
+                setDefaultTimeForDate(tomorrowStr);
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // 時間工具與區間重疊比對函式
+        // -------------------------------------------------------------------------
+        function normalizeTime(t) {
+            if (!t) return '';
+            const parts = String(t).trim().split(':');
+            if (parts.length < 2) return '';
+            return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+        }
+
+        function isTimeOverlap(s1, e1, s2, e2) {
+            const start1 = normalizeTime(s1);
+            const end1 = normalizeTime(e1);
+            const start2 = normalizeTime(s2);
+            const end2 = normalizeTime(e2);
+            if (!start1 || !end1 || !start2 || !end2) return false;
+            return start1 < end2 && end1 > start2;
+        }
+
+        function debounce(fn, delay = 250) {
+            let timer = null;
+            return function (...args) {
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        /**
+         * 依據調度日期動態設定預設起訖時間
+         * - 未來日期：預設 08:00 ~ 17:00
+         * - 今天：起時動態取下一個整點/半點至 17:00 (超過 17:00 則至 23:59)
+         */
+        function setDefaultTimeForDate(dateStr) {
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+            if (!dateStr || dateStr > todayStr) {
+                setTimePickerValues('08:00', '17:00');
+                return;
+            }
+
+            if (dateStr === todayStr) {
+                const curHours = now.getHours();
+                const curMinutes = now.getMinutes();
+
+                let startHour, startMinute;
+                if (curMinutes === 0) {
+                    startHour = curHours;
+                    startMinute = 0;
+                } else if (curMinutes <= 30) {
+                    startHour = curHours;
+                    startMinute = 30;
+                } else {
+                    startHour = curHours + 1;
+                    startMinute = 0;
+                }
+
+                if (startHour < 8) {
+                    setTimePickerValues('08:00', '17:00');
+                    return;
+                }
+
+                if (startHour < 17 || (startHour === 17 && startMinute === 0)) {
+                    const startStr = `${pad(startHour)}:${pad(startMinute)}`;
+                    const endStr = (startHour === 17 && startMinute === 0) ? '18:00' : '17:00';
+                    setTimePickerValues(startStr, endStr);
+                    return;
+                }
+
+                const startH = Math.min(startHour, 23);
+                const startStr = `${pad(startH)}:${pad(startMinute)}`;
+                const endH = Math.min(startH + 2, 23);
+                const endStr = (endH >= 23 && startH >= 23) ? '23:59' : `${pad(endH)}:00`;
+                setTimePickerValues(startStr, endStr === startStr ? '23:59' : endStr);
+                return;
+            }
+
+            setTimePickerValues('08:00', '17:00');
+        }
+
+        // =========================================================================
+        // 3. 後端 API 串接：部門清單與人員資料載入
+        // =========================================================================
+
+        /**
+         * 呼叫 GET /api/departments 取得廠別清單
+         */
+        async function loadDepartments() {
+            try {
+                const res = await API.get('/api/departments');
+                if (res && Array.isArray(res.data)) {
+                    departmentList = res.data;
+                } else if (Array.isArray(res)) {
+                    departmentList = res;
+                }
+            } catch (err) {
+                console.warn('[Department] 載入部門失敗，使用備援名單:', err);
+                departmentList = [
+                    { deptId: 'JMA01', deptName: 'A12-1廠' },
+                    { deptId: 'JMA02', deptName: 'A12-2廠' },
+                    { deptId: 'JMA03', deptName: 'A12-3廠' },
+                    { deptId: 'JMA04', deptName: 'A5-1廠' },
+                    { deptId: 'JMA05', deptName: 'A5-2廠' },
+                    { deptId: 'JMA06', deptName: 'A7廠' },
+                    { deptId: 'JMB01', deptName: 'B10-1廠' },
+                    { deptId: 'JMB02', deptName: 'B10-2廠' },
+                    { deptId: 'JMB03', deptName: 'B10-3廠' },
+                    { deptId: 'JMB04', deptName: 'B11廠' },
+                    { deptId: 'JMB05', deptName: 'B4廠' },
+                    { deptId: 'JMB06', deptName: 'C1廠' },
+                    { deptId: 'JMB07', deptName: 'ED廠' },
+                    { deptId: 'JMB08', deptName: 'F1廠' },
+                    { deptId: 'JW001', deptName: '工程部' },
+                    { deptId: 'JL001', deptName: '物流部' }
+                ];
+                alert('廠別資料讀取失敗，使用本機預設廠別清單');
+            }
+
+            // 填充 Select2 多選篩選
+            const optionsHtml = departmentList.map(d =>
+                `<option value="${d.deptId}">${d.deptName || d.deptId}</option>`
+            ).join('');
+
+            $('#filterDept').empty().append(optionsHtml).trigger('change');
+            $('#filterTargetDept').empty().append(optionsHtml).trigger('change');
+
+            // 填充單選下拉
+            $('#sourceDept').empty().append(optionsHtml);
+
+            // 優先設定為當前登入者所屬部門
+            const curUser = (typeof Auth !== 'undefined') ? Auth.getUser() : null;
+            if (curUser && curUser.deptId && $(`#sourceDept option[value="${curUser.deptId}"]`).length > 0) {
+                $('#sourceDept').val(curUser.deptId);
+            } else if (departmentList.length > 0) {
+                $('#sourceDept').val(departmentList[0].deptId);
+            }
+
+            // 互斥排除：初始化目的廠選項，排除目前選定的來源廠
+            updateTargetDeptOptions($('#sourceDept').val());
+        }
+
+        /**
+         * 依據來源廠代碼動態更新目的廠選單 (排除同廠，落實互斥)
+         */
+        function updateTargetDeptOptions(sourceDeptId, preserveTargetVal) {
+            const targetDeptElem = $('#targetDept');
+            const currentTarget = preserveTargetVal || targetDeptElem.val();
+
+            const filteredDepts = departmentList.filter(d => d.deptId !== sourceDeptId);
+            const optionsHtml = '<option value="">請選擇目的廠...</option>' + filteredDepts.map(d =>
+                `<option value="${d.deptId}">${d.deptName || d.deptId}</option>`
+            ).join('');
+
+            targetDeptElem.empty().append(optionsHtml);
+
+            if (currentTarget && currentTarget !== sourceDeptId && filteredDepts.some(d => d.deptId === currentTarget)) {
+                targetDeptElem.val(currentTarget);
+            } else {
+                targetDeptElem.val('');
+            }
+        }
+
+        /**
+         * 呼叫 POST /api/employees 取得特定部門人員名單
+         */
+        async function loadEmployeesForDepartment(deptId) {
+            if (!deptId) return [];
+            if (departmentEmployeesCache[deptId]) {
+                return departmentEmployeesCache[deptId];
+            }
+
+            let employees = [];
+            try {
+                let res = await API.post('/api/employees', { Department: deptId });
+                if (!Array.isArray(res) || res.length === 0) {
+                    const deptText = $(`#sourceDept option[value="${deptId}"]`).text();
+                    if (deptText && deptText !== deptId) {
+                        res = await API.post('/api/employees', { DepartmentName: deptText });
+                    }
+                }
+
+                if (Array.isArray(res) && res.length > 0) {
+                    employees = res.map(e => ({
+                        id: e.userID || e.id || e.empId,
+                        name: e.userName || e.name,
+                        title: e.functionDefinitionName || e.title || '同仁'
+                    }));
+                }
+            } catch (err) {
+                console.warn('[Employee] 查詢人員失敗:', err);
+            }
+
+            if (employees.length === 0 && fallbackEmployeePool[deptId]) {
+                employees = fallbackEmployeePool[deptId];
+            }
+
+            departmentEmployeesCache[deptId] = employees;
+            return employees;
+        }
+
+        // =========================================================================
+        // 4. Flatpickr 與表格初始化
+        // =========================================================================
+        function initTimePickers() {
+            const debouncedRefresh = debounce(() => {
+                refreshPersonnelStatusPreserveChecked();
+            }, 250);
+
+            const timeConfig = {
+                enableTime: true,
+                noCalendar: true,
+                dateFormat: "H:i",
+                time_24hr: true,
+                allowInput: true,
+                minuteIncrement: 15,
+                onChange: function () {
+                    debouncedRefresh();
+                }
+            };
+            fpStartTime = flatpickr("#startTime", timeConfig);
+            fpEndTime = flatpickr("#endTime", timeConfig);
+
+            $('#startTime, #endTime').on('input change', function () {
+                debouncedRefresh();
+            });
+
+            const filterTimeConfig = {
+                enableTime: true,
+                noCalendar: true,
+                dateFormat: "H:i",
+                time_24hr: true,
+                allowInput: true,
+                minuteIncrement: 15
+            };
+            fpFilterStartTime = flatpickr("#filterStartTime", filterTimeConfig);
+            fpFilterEndTime = flatpickr("#filterEndTime", filterTimeConfig);
+        }
+
+        function setTimePickerValues(start, end) {
+            if (fpStartTime) fpStartTime.setDate(start, false);
+            else $('#startTime').val(start);
+
+            if (fpEndTime) fpEndTime.setDate(end, false);
+            else $('#endTime').val(end);
+        }
+
+        /**
+         * 依據調度日期與當前時間產生操作按鈕：
+         * - 未來日期：[修改]、[刪除]
+         * - 當天日期：[修改]，若明細中沒有已經經過的調度時間則也顯示 [刪除]
+         * - 過去日期：僅顯示 [檢視] (唯讀)
+         */
+        function getPlanActionButtonsHtml(row) {
+            const planNo = row.planNo || row.planId;
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+            const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+            const planDate = (row.dispatchDate || '').replace(/\//g, '-');
+
+            // 1. 過去日期：僅顯示 [檢視] (鎖定不可修改)
+            if (planDate < todayStr) {
+                return `
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-secondary px-3" onclick="loadPlanToEditor('${planNo}', true)" title="檢視此單 (唯讀)">
+                            <i class="bi bi-eye me-1"></i>檢視
+                        </button>
+                    </div>
+                `;
+            }
+
+            // 2. 當天日期：顯示 [修改]，若明細中「沒有已經經過的調度時間」則也顯示 [刪除]
+            if (planDate === todayStr) {
+                const hasPassedItems = (row.items || []).some(item => {
+                    const start = (item.startTime || '').trim();
+                    return start && start <= currentTimeStr;
+                });
+
+                const deleteBtnHtml = !hasPassedItems
+                    ? `<button type="button" class="btn btn-outline-danger px-3" onclick="deleteMasterPlan('${planNo}')" title="刪除此單">
+                           <i class="bi bi-trash3 me-1"></i>刪除
+                       </button>`
+                    : '';
+
+                return `
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button" class="btn btn-outline-primary px-3" onclick="loadPlanToEditor('${planNo}', false)" title="修改此單">
+                            <i class="bi bi-pencil-square me-1"></i>修改
+                        </button>
+                        ${deleteBtnHtml}
+                    </div>
+                `;
+            }
+
+            // 3. 未來日期：顯示 [修改]、[刪除]
+            return `
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-primary px-3" onclick="loadPlanToEditor('${planNo}', false)" title="修改此單">
+                        <i class="bi bi-pencil-square me-1"></i>修改
+                    </button>
+                    <button type="button" class="btn btn-outline-danger px-3" onclick="deleteMasterPlan('${planNo}')" title="刪除此單">
+                        <i class="bi bi-trash3 me-1"></i>刪除
+                    </button>
+                </div>
+            `;
+        }
+
+        function initMasterTable() {
+            $('#dispatchListTable').bootstrapTable({
+                data: masterDispatchList,
+                classes: 'table table-bordered table-hover align-middle mb-0',
+                headerStyle: function () {
+                    return { classes: 'excel-thead text-center' };
+                },
+                columns: [
+                    {
+                        field: 'dispatchDate',
+                        title: '調度日期',
+                        width: 130,
+                        align: 'center',
+                        sortable: true
+                    },
+                    {
+                        field: 'sourceDept',
+                        title: '來源廠',
+                        width: 160,
+                        align: 'center',
+                        sortable: true,
+                        formatter: function (value, row) {
+                            return row.sourceDeptName || row.sourceDept || row.sourceDeptId || '-';
+                        }
+                    },
+                    {
+                        field: 'summary',
+                        title: '目的廠與支援時段摘要',
+                        formatter: function (value, row) {
+                            if (!row.items || row.items.length === 0) return '<span class="text-muted">-</span>';
+
+                            const targetDepts = $('#filterTargetDept').val() || [];
+                            const filterStart = $('#filterStartTime').val() ? $('#filterStartTime').val().trim() : '';
+                            const filterEnd = $('#filterEndTime').val() ? $('#filterEndTime').val().trim() : '';
+
+                            const displayedItems = row.items.filter(item => {
+                                const tDeptId = item.targetDeptId || item.targetDept;
+                                const tDeptName = item.targetDeptName || item.targetDept;
+                                if (targetDepts.length > 0 && !targetDepts.includes(tDeptId) && !targetDepts.includes(tDeptName)) {
+                                    return false;
+                                }
+                                if (filterStart || filterEnd) {
+                                    if (!isTimeRangeOverlap(item.startTime, item.endTime, filterStart, filterEnd)) {
+                                        return false;
+                                    }
+                                }
+                                return true;
+                            });
+
+                            if (displayedItems.length === 0) return '<span class="text-muted small">無符合篩選之時段</span>';
+
+                            return displayedItems.map(item => {
+                                const empNames = (item.employees || []).map(e => `[${e.id || e.empId}] ${e.name}`).join(', ');
+                                const purposeHtml = item.purpose ? `<span class="fw-semibold text-secondary me-1">【${item.purpose}】</span>` : '';
+                                const targetDisplayName = item.targetDeptName || item.targetDept || item.targetDeptId;
+                                return `<div class="small mb-1">
+                                        <span class="badge bg-info text-dark me-1">${targetDisplayName}</span>
+                                        <span class="fw-semibold text-secondary me-1">(${item.startTime}~${item.endTime})</span>
+                                        ${purposeHtml}
+                                        <span class="text-dark">${empNames}</span>
+                                    </div>`;
+                            }).join('');
+                        }
+                    },
+                    {
+                        field: 'operate',
+                        title: '操作',
+                        width: 180,
+                        align: 'center',
+                        formatter: function (value, row) {
+                            return getPlanActionButtonsHtml(row);
+                        }
+                    }
+                ]
+            });
+        }
+
+        function initSubItemTable() {
+            $('#subItemTable').bootstrapTable({
+                data: currentSubItems,
+                classes: 'table table-bordered align-middle mb-0',
+                headerStyle: function () {
+                    return { classes: 'excel-thead text-center small' };
+                },
+                rowAttributes: function (row) {
+                    return {
+                        'data-seq': row.seq,
+                        'class': row.seq === selectedSubItemSeq ? 'selected-row' : ''
+                    };
+                },
+                columns: [
+                    {
+                        field: 'seq',
+                        title: '順序',
+                        width: 70,
+                        align: 'end'
+                    },
+                    {
+                        field: 'dispatchDate',
+                        title: '調度日期',
+                        width: 120,
+                        align: 'center'
+                    },
+                    {
+                        field: 'sourceDept',
+                        title: '來源廠',
+                        width: 120,
+                        align: 'center',
+                        formatter: function (value, row) {
+                            return row.sourceDeptName || row.sourceDept || row.sourceDeptId;
+                        }
+                    },
+                    {
+                        field: 'targetDept',
+                        title: '目的廠',
+                        width: 120,
+                        align: 'center',
+                        formatter: function (value, row) {
+                            return row.targetDeptName || row.targetDept || row.targetDeptId;
+                        }
+                    },
+                    {
+                        field: 'timeRange',
+                        title: '調度時間',
+                        width: 140,
+                        align: 'center',
+                        formatter: function (value, row) {
+                            return `${row.startTime}~${row.endTime}`;
+                        }
+                    },
+                    {
+                        field: 'purpose',
+                        title: '用途',
+                        width: 180,
+                        align: 'start'
+                    },
+                    {
+                        field: 'employees',
+                        title: '同仁清單',
+                        align: 'start',
+                        formatter: function (value) {
+                            if (!value || value.length === 0) return '';
+                            return value.map(e => `[${e.id || e.empId}] ${e.name}`).join(',<br>');
+                        }
+                    }
+                ],
+                onClickRow: async function (row, $element) {
+                    if (isViewOnlyMode) {
+                        selectedSubItemSeq = row.seq;
+                        $('#subItemTable tbody tr').removeClass('selected-row');
+                        $element.addClass('selected-row');
+                        await populateFormFromSubItem(row);
+                        updateSubActionButtonsState();
+                        return;
+                    }
+                    if (selectedSubItemSeq === row.seq) {
+                        selectedSubItemSeq = null;
+                        $('#subItemTable tbody tr').removeClass('selected-row');
+                        $('#targetDept').val('');
+                        $('#purpose').val('');
+                        setDefaultTimeForDate($('#dispatchDate').val());
+                        await renderPersonnelChecklist($('#sourceDept').val(), []);
+                        updateSubActionButtonsState();
+                    } else {
+                        selectedSubItemSeq = row.seq;
+                        $('#subItemTable tbody tr').removeClass('selected-row');
+                        $element.addClass('selected-row');
+                        await populateFormFromSubItem(row);
+                        updateSubActionButtonsState();
+                    }
+                }
+            });
+        }
+
+        // =========================================================================
+        // 5. 人員清單渲染與衝突即時檢測
+        // =========================================================================
+        async function renderPersonnelChecklist(dept, checkedIds = []) {
+            const list = await loadEmployeesForDepartment(dept);
+            const $container = $('#personnelListContainer');
+            $container.empty();
+
+            if (!list || list.length === 0) {
+                $container.html('<div class="p-3 text-center text-muted small">此來源廠無可調派人員資料</div>');
+                updateSelectedEmpCount();
+                return;
+            }
+
+            const rawDate = $('#dispatchDate').val();
+            const curStartTime = normalizeTime($('#startTime').val());
+            const curEndTime = normalizeTime($('#endTime').val());
+
+            // 呼叫後端 API 檢驗本廠同仁在該調度日是否有被其他調度單排定 (傳遞時段以進行區間重疊比對)
+            let backendConflicts = [];
+            if (rawDate && list.length > 0) {
+                try {
+                    const conflictRes = await API.post('/api/dispatch-plans/check-conflict', {
+                        dispatchDate: rawDate,
+                        startTime: curStartTime,
+                        endTime: curEndTime,
+                        empIds: list.map(e => e.id),
+                        excludePlanNo: editingPlanId || undefined
+                    });
+                    if (conflictRes && Array.isArray(conflictRes.conflicts)) {
+                        backendConflicts = conflictRes.conflicts;
+                    }
+                } catch (e) {
+                    console.warn('[Conflict] 查詢後端衝突失敗:', e);
+                }
+            }
+
+            const kw = ($('#searchEmpInput').val() || '').trim().toLowerCase();
+
+            list.forEach(emp => {
+                // 1. 後端衝突 (其他調度單已排定重疊時段)
+                const beConflict = backendConflicts.find(c => c.empId === emp.id);
+
+                // 2. 前端衝突與非重疊時段檢查 (當前正在編輯的調度單內其他時段，排除正在點選修改的列)
+                let feConflict = null;
+                const otherSchedules = [];
+
+                for (const item of currentSubItems) {
+                    if (selectedSubItemSeq !== null && item.seq === selectedSubItemSeq) continue;
+                    if (item.dispatchDate === rawDate) {
+                        const found = (item.employees || []).some(e => (e.id || e.empId) === emp.id);
+                        if (found) {
+                            const isOverlap = isTimeOverlap(item.startTime, item.endTime, curStartTime, curEndTime);
+                            if (isOverlap) {
+                                feConflict = {
+                                    targetDept: item.targetDeptName || item.targetDept || item.targetDeptId,
+                                    startTime: item.startTime,
+                                    endTime: item.endTime
+                                };
+                                break;
+                            } else {
+                                otherSchedules.push({
+                                    targetDept: item.targetDeptName || item.targetDept || item.targetDeptId,
+                                    startTime: item.startTime,
+                                    endTime: item.endTime
+                                });
+                            }
+                        }
+                    }
+                }
+
+                const conflictInfo = beConflict ? {
+                    targetDept: beConflict.targetDeptName || '他廠',
+                    startTime: beConflict.startTime || '',
+                    endTime: beConflict.endTime || '',
+                    planNo: beConflict.planNo
+                } : feConflict;
+
+                const isAssignedOther = conflictInfo !== null;
+
+                // 若已被排定重疊，強制禁止勾選
+                const isChecked = (!isAssignedOther && checkedIds.includes(emp.id)) ? 'checked' : '';
+                const isDisabled = (isViewOnlyMode || isAssignedOther) ? 'disabled' : '';
+                const itemClass = isAssignedOther ? 'disabled-item' : '';
+                const textClass = isAssignedOther ? 'text-muted' : 'text-dark';
+
+                let badgeText = '';
+                if (conflictInfo) {
+                    const timeRange = (conflictInfo.startTime && conflictInfo.endTime)
+                        ? ` (${conflictInfo.startTime}~${conflictInfo.endTime})`
+                        : '';
+                    if (conflictInfo.planNo) {
+                        badgeText = `已被排定至 ${conflictInfo.targetDept}${timeRange} (單號: ${conflictInfo.planNo})`;
+                    } else {
+                        badgeText = `已被排定至 ${conflictInfo.targetDept}${timeRange}`;
+                    }
+                }
+
+                let badgeHtml = '';
+                if (isAssignedOther) {
+                    badgeHtml = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-2 fw-normal">
+                           <i class="bi bi-lock-fill me-1"></i>${badgeText}
+                       </span>`;
+                } else if (otherSchedules.length > 0) {
+                    const schedText = otherSchedules.map(s => `${s.targetDept} (${s.startTime}~${s.endTime})`).join('、');
+                    badgeHtml = `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle ms-2 fw-normal" title="今日其他時段已排定任務">
+                           <i class="bi bi-clock-history me-1"></i>今日已排 ${schedText}
+                       </span>`;
+                }
+
+                const searchData = `${emp.id} ${emp.name} ${emp.title}`.toLowerCase();
+                const isVisible = !kw || searchData.includes(kw);
+
+                const itemHtml = `
+                    <label class="d-flex align-items-center justify-content-between personnel-item m-0 ${itemClass}" 
+                           data-search="${emp.id} ${emp.name} ${emp.title}"
+                           style="${isVisible ? '' : 'display: none !important;'}">
+                        <div class="d-flex align-items-center">
+                            <div class="text-center" style="width: 60px;">
+                                <input type="checkbox" class="form-check-input emp-checkbox" 
+                                       value="${emp.id}" data-name="${emp.name}" data-title="${emp.title}" 
+                                       ${isChecked} ${isDisabled}>
+                            </div>
+                            <div class="ps-1 small ${textClass}">
+                                <span class="fw-semibold">[${emp.id}]</span> ${emp.name} (${emp.title})
+                                ${badgeHtml}
+                            </div>
+                        </div>
+                    </label>
+                `;
+                $container.append(itemHtml);
+            });
+
+            updateSelectedEmpCount();
+        }
+
+        async function refreshPersonnelStatusPreserveChecked() {
+            const currentCheckedIds = [];
+            $('.emp-checkbox:checked').each(function () {
+                currentCheckedIds.push($(this).val());
+            });
+            await renderPersonnelChecklist($('#sourceDept').val(), currentCheckedIds);
+        }
+
+        function getCheckedEmployees() {
+            const selected = [];
+            $('.emp-checkbox:checked:not(:disabled)').each(function () {
+                selected.push({
+                    id: $(this).val(),
+                    empId: $(this).val(),
+                    name: $(this).data('name'),
+                    title: $(this).data('title')
+                });
+            });
+            return selected;
+        }
+
+        function updateSelectedEmpCount() {
+            const checkedCount = $('.emp-checkbox:checked:not(:disabled)').length;
+            const disabledCount = $('.emp-checkbox:disabled').length;
+            const extraInfo = (!isViewOnlyMode && disabledCount > 0) ? ` (另有 ${disabledCount} 位已被排定)` : '';
+            $('#selectedEmpCountText').text(`已勾選 ${checkedCount} 位人員${extraInfo}`);
+        }
+
+        // =========================================================================
+        // 6. 表單與子項目操作 (新增 / 修改 / 刪除)
+        // =========================================================================
+        async function populateFormFromSubItem(item) {
+            $('#dispatchDate').val(item.dispatchDate.replace(/\//g, '-'));
+            if (item.sourceDeptId) {
+                $('#sourceDept').val(item.sourceDeptId);
+            }
+            updateTargetDeptOptions($('#sourceDept').val(), item.targetDeptId || item.targetDept);
+            setTimePickerValues(item.startTime, item.endTime);
+            $('#purpose').val(item.purpose || '');
+
+            const checkedIds = (item.employees || []).map(e => e.id || e.empId);
+            await renderPersonnelChecklist($('#sourceDept').val(), checkedIds);
+        }
+
+        function validateAndReadForm() {
+            const rawDate = $('#dispatchDate').val();
+            const sourceDeptId = $('#sourceDept').val();
+            const sourceDeptName = $('#sourceDept option:selected').text();
+            const targetDeptId = $('#targetDept').val();
+            const targetDeptName = $('#targetDept option:selected').text();
+            const startTime = $('#startTime').val().trim();
+            const endTime = $('#endTime').val().trim();
+            const purpose = $('#purpose').val().trim();
+            const employees = getCheckedEmployees();
+
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+            const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+            if (!rawDate || !sourceDeptId || !targetDeptId || !startTime || !endTime) {
+                alert('請完整填寫「調度日期、來源廠、目的廠、調度起訖時間」等必填欄位！');
+                return null;
+            }
+            if (sourceDeptId === targetDeptId) {
+                alert('不支援同廠支援調度！「來源廠」與「目的廠」不可相同！');
+                return null;
+            }
+            if (startTime >= endTime) {
+                alert('「調度時間(訖)」必須大於「調度時間(起)」，且本系統不支援跨日班次！');
+                return null;
+            }
+            if (employees.length === 0) {
+                alert('請至少勾選 1 位可用支援人員！');
+                return null;
+            }
+            if (rawDate < todayStr) {
+                alert(`調度日期不可早於今日 (${rawDate})！不允許建立過去日期的調度資料。`);
+                return null;
+            }
+            if (rawDate === todayStr && startTime <= currentTimeStr) {
+                alert(`調度開始時間已過去 (${rawDate.replace(/-/g, '/')} ${startTime})，無法建立或更新為過去的時間！`);
+                return null;
+            }
+
+            return {
+                dispatchDate: rawDate,
+                sourceDept: sourceDeptName,
+                sourceDeptId,
+                targetDept: targetDeptName,
+                targetDeptId,
+                startTime,
+                endTime,
+                purpose,
+                employees
+            };
+        }
+
+        function refreshSubItemTable() {
+            currentSubItems.forEach((item, idx) => {
+                item.seq = idx + 1;
+            });
+            $('#subItemTable').bootstrapTable('load', currentSubItems);
+            updateSubActionButtonsState();
+        }
+
+        /**
+         * 判斷時段是否已為過去時間
+         */
+        function isSubItemPassed(item) {
+            if (!item) return false;
+            const rawDate = (item.dispatchDate || $('#dispatchDate').val() || '').replace(/\//g, '-');
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+            const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+            if (rawDate < todayStr) return true;
+            if (rawDate === todayStr) {
+                const start = (item.startTime || '').trim();
+                return Boolean(start && start <= currentTimeStr);
+            }
+            return false;
+        }
+
+        function updateSubActionButtonsState() {
+            if (isViewOnlyMode) {
+                $('#btnAddSubItem, #btnUpdateSubItem, #btnDeleteSubItem').prop('disabled', true);
+                $('#subItemPassedNotice').addClass('d-none');
+                return;
+            }
+
+            const curDate = $('#dispatchDate').val();
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+            if (curDate < todayStr) {
+                $('#btnAddSubItem, #btnUpdateSubItem, #btnDeleteSubItem').prop('disabled', true);
+                return;
+            }
+
+            $('#btnAddSubItem').prop('disabled', false);
+            const hasSelection = selectedSubItemSeq !== null;
+            if (!hasSelection) {
+                $('#btnUpdateSubItem').prop('disabled', true);
+                $('#btnDeleteSubItem').prop('disabled', true);
+                $('#subItemPassedNotice').addClass('d-none');
+                return;
+            }
+
+            const currentItem = currentSubItems.find(it => it.seq === selectedSubItemSeq);
+            if (currentItem && isSubItemPassed(currentItem)) {
+                $('#btnUpdateSubItem').prop('disabled', true);
+                $('#btnDeleteSubItem').prop('disabled', true);
+                $('#subItemPassedNotice').removeClass('d-none').find('span').text(`此時段開始時間已過去 (${currentItem.startTime})，鎖定不可修改或刪除！`);
+                $('#targetDept, #startTime, #endTime, #purpose, .emp-checkbox, #btnSelectAllEmp, #btnClearAllEmp').prop('disabled', true);
+            } else {
+                $('#btnUpdateSubItem').prop('disabled', false);
+                $('#btnDeleteSubItem').prop('disabled', false);
+                $('#subItemPassedNotice').addClass('d-none');
+                $('#targetDept, #startTime, #endTime, #purpose, .emp-checkbox, #btnSelectAllEmp, #btnClearAllEmp').prop('disabled', false);
+            }
+        }
+
+        /**
+         * 判斷是否為過去日期 (不可早於今日)
+         */
+        function isPastDate(dateStr) {
+            if (!dateStr) return false;
+            const now = new Date();
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const targetDay = new Date(`${dateStr}T00:00:00`);
+            return targetDay < todayStart;
+        }
+
+        /**
+         * 檢查某日期與來源廠是否在前端清單已有調度單 (排除目前編輯中單號)
+         */
+        function checkDuplicatePlan(dateStr, sourceDeptId) {
+            if (!dateStr || !sourceDeptId) return null;
+            return masterDispatchList.find(p => {
+                if (editingPlanId && (p.planNo === editingPlanId || p.planId === editingPlanId)) return false;
+                const matchDate = (p.dispatchDate === dateStr);
+                const matchDept = (p.sourceDeptId === sourceDeptId || p.sourceDept === sourceDeptId);
+                return matchDate && matchDept;
+            }) || null;
+        }
+
+        function updateDuplicatePlanAlert() {
+            const curDate = $('#dispatchDate').val();
+            const curDept = $('#sourceDept').val();
+            const dup = checkDuplicatePlan(curDate, curDept);
+            if (dup) {
+                const deptText = $('#sourceDept option:selected').text() || curDept;
+                $('#duplicatePlanAlertText').text(`已建立過 ${curDate} ${deptText} 的調度單`);
+                $('#duplicatePlanAlert').removeClass('d-none');
+            } else {
+                $('#duplicatePlanAlert').addClass('d-none');
+            }
+        }
+
+        // =========================================================================
+        // 7. 主單編輯載入 / 刪除 / 回復新增模式
+        // =========================================================================
+        window.loadPlanToEditor = async function (planNo, viewOnly) {
+            try {
+                const res = await API.get('/api/dispatch-plans/' + planNo);
+                const plan = res.data;
+                if (!plan) {
+                    alert('找不到該調度單據！');
+                    return;
+                }
+
+                editingPlanId = plan.planNo;
+                isViewOnlyMode = !!viewOnly;
+
+                currentSubItems = (plan.items || []).map((item, idx) => ({
+                    seq: item.seq || (idx + 1),
+                    dispatchDate: plan.dispatchDate,
+                    sourceDept: plan.sourceDeptName || plan.sourceDeptId,
+                    sourceDeptId: plan.sourceDeptId,
+                    targetDept: item.targetDeptName || item.targetDeptId,
+                    targetDeptId: item.targetDeptId,
+                    startTime: item.startTime,
+                    endTime: item.endTime,
+                    purpose: item.purpose || '',
+                    employees: (item.employees || []).map(e => ({
+                        id: e.empId || e.id,
+                        empId: e.empId || e.id,
+                        name: e.name || e.empName,
+                        title: e.title || e.empTitle || '同仁',
+                        deptName: e.deptName || e.empDeptName,
+                        checkInStatus: e.checkInStatus
+                    }))
+                }));
+
+                selectedSubItemSeq = null;
+
+                const deptDisplay = plan.sourceDeptName || plan.sourceDeptId;
+                if (viewOnly) {
+                    $('#createCardTitle').html(`<i class="bi bi-eye-fill text-secondary me-2"></i>檢視支援調度 (${plan.dispatchDate} - ${deptDisplay}) (唯讀)`);
+                    $('#btnSubmitPlan').hide();
+                    $('#btnCancelPlanEdit').html('<i class="bi bi-x-circle me-1"></i>關閉檢視').show();
+                } else {
+                    $('#createCardTitle').html(`<i class="bi bi-pencil-square text-primary me-2"></i>修改支援調度 (${plan.dispatchDate} - ${deptDisplay})`);
+                    $('#btnSubmitPlan').show();
+                    $('#btnCancelPlanEdit').html('<i class="bi bi-x-circle me-1"></i>取消修改').show();
+                }
+
+                $('#dispatchDate').val(plan.dispatchDate);
+                $('#sourceDept').val(plan.sourceDeptId);
+                updateTargetDeptOptions(plan.sourceDeptId);
+                $('#targetDept').val('');
+                setDefaultTimeForDate(plan.dispatchDate);
+                $('#purpose').val('');
+
+                $('#itemInputForm input:not(.emp-checkbox), #itemInputForm select, #btnSelectAllEmp, #btnClearAllEmp').prop('disabled', viewOnly);
+                if (!viewOnly) {
+                    $('#dispatchDate, #sourceDept').prop('disabled', true);
+                }
+
+                await loadEmployeesForDepartment(plan.sourceDeptId);
+                await renderPersonnelChecklist(plan.sourceDeptId, []);
+                refreshSubItemTable();
+                $('#subItemTable tbody tr').removeClass('selected-row');
+                updateDuplicatePlanAlert();
+
+                document.getElementById('editorCard').scrollIntoView({ behavior: 'smooth' });
+            } catch (err) {
+                console.error('[LoadPlan] 載入調度單失敗:', err);
+                alert('載入調度單失敗: ' + (err.message || '連線錯誤'));
+            }
+        };
+
+        window.deleteMasterPlan = async function (planNo) {
+            const plan = masterDispatchList.find(p => p.planNo === planNo || p.planId === planNo);
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+            const currentTimeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+
+            if (plan) {
+                const planDate = (plan.dispatchDate || '').replace(/\//g, '-');
+                if (planDate < todayStr) {
+                    alert('無法刪除過去日期的調度單！');
+                    return;
+                }
+                if (planDate === todayStr) {
+                    const hasPassed = (plan.items || []).some(item => {
+                        const start = (item.startTime || '').trim();
+                        return start && start <= currentTimeStr;
+                    });
+                    if (hasPassed) {
+                        alert('調度單中已有開始時間過去或進行中的時段，無法刪除！');
+                        return;
+                    }
+                }
+                const hasCheckedIn = (plan.items || []).some(item =>
+                    (item.employees || []).some(e => e.checkInStatus === 1 || e.checkInStatus === 2)
+                );
+                if (hasCheckedIn) {
+                    alert('現場已有同仁完成簽到，無法刪除此調度單！');
+                    return;
+                }
+            }
+
+            if (!confirm(`確定要刪除調度單 ${planNo} 嗎？`)) return;
+
+            try {
+                await API.delete('/api/dispatch-plans/' + planNo);
+                alert(`調度單 ${planNo} 已成功刪除！`);
+
+                if (editingPlanId === planNo) {
+                    resetToCreateMode();
+                } else {
+                    await refreshPersonnelStatusPreserveChecked();
+                    updateDuplicatePlanAlert();
+                }
+                await applyMasterFilter();
+            } catch (err) {
+                console.error('[DeletePlan] 刪除調度單失敗:', err);
+                alert('刪除調度單失敗: ' + (err.message || '連線錯誤'));
+            }
+        };
+
+        function resetToCreateMode() {
+            editingPlanId = null;
+            isViewOnlyMode = false;
+            currentSubItems = [];
+            selectedSubItemSeq = null;
+
+            $('#createCardTitle').html(`<i class="bi bi-plus-circle-fill text-success me-2"></i>新增支援調度`);
+            $('#btnSubmitPlan').show();
+            $('#btnCancelPlanEdit').hide();
+            $('#subItemPassedNotice').addClass('d-none');
+            $('#itemInputForm input:not(.emp-checkbox), #itemInputForm select, #btnSelectAllEmp, #btnClearAllEmp').prop('disabled', false);
+            $('#dispatchDate, #sourceDept').prop('disabled', false);
+
+            const today = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const tomorrow = new Date(today);
+            tomorrow.setDate(today.getDate() + 1);
+            const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+            $('#dispatchDate').val(tomorrowStr);
+
+            updateTargetDeptOptions($('#sourceDept').val());
+            $('#targetDept').val('');
+            setDefaultTimeForDate(tomorrowStr);
+            $('#purpose').val('');
+
+            renderPersonnelChecklist($('#sourceDept').val(), []);
+            refreshSubItemTable();
+            updateDuplicatePlanAlert();
+        }
+
+        // =========================================================================
+        // 8. 上半部查詢與篩選 (串接 GET /api/dispatch-plans)
+        // =========================================================================
+        async function applyMasterFilter() {
+            const startDate = $('#filterStartDate').val();
+            const endDate = $('#filterEndDate').val();
+            const sourceDeptVal = $('#filterDept').val();
+            const targetDeptVal = $('#filterTargetDept').val();
+            const startTime = $('#filterStartTime').val() ? $('#filterStartTime').val().trim() : '';
+            const endTime = $('#filterEndTime').val() ? $('#filterEndTime').val().trim() : '';
+            const keyword = $('#filterKeyword').val() ? $('#filterKeyword').val().trim() : '';
+
+            const params = {};
+            if (startDate) params.startDate = startDate;
+            if (endDate) params.endDate = endDate;
+            if (sourceDeptVal && sourceDeptVal.length > 0) {
+                params.sourceDeptId = Array.isArray(sourceDeptVal) ? sourceDeptVal.join(',') : sourceDeptVal;
+            }
+            if (targetDeptVal && targetDeptVal.length > 0) {
+                params.targetDeptId = Array.isArray(targetDeptVal) ? targetDeptVal.join(',') : targetDeptVal;
+            }
+            if (startTime) params.startTime = startTime;
+            if (endTime) params.endTime = endTime;
+            if (keyword) params.keyword = keyword;
+
+            try {
+                const res = await API.get('/api/dispatch-plans', params);
+                const list = (res && Array.isArray(res.data)) ? res.data : [];
+
+                masterDispatchList = list.map(p => ({
+                    planId: p.planNo,
+                    planNo: p.planNo,
+                    dispatchDate: p.dispatchDate,
+                    sourceDeptId: p.sourceDeptId,
+                    sourceDept: p.sourceDeptName || p.sourceDeptId,
+                    sourceDeptName: p.sourceDeptName || p.sourceDeptId,
+                    editable: true,
+                    createUser: p.createUser,
+                    createUserName: p.createUserName,
+                    createTime: p.createTime,
+                    items: (p.items || []).map(it => ({
+                        itemId: it.itemId,
+                        seq: it.seq,
+                        targetDeptId: it.targetDeptId,
+                        targetDept: it.targetDeptName || it.targetDeptId,
+                        targetDeptName: it.targetDeptName || it.targetDeptId,
+                        startTime: it.startTime,
+                        endTime: it.endTime,
+                        purpose: it.purpose || '',
+                        employees: (it.employees || []).map(e => ({
+                            id: e.empId || e.id,
+                            empId: e.empId || e.id,
+                            name: e.name || e.empName,
+                            title: e.title || e.empTitle || '同仁',
+                            deptName: e.deptName || e.empDeptName
+                        }))
+                    }))
+                }));
+
+                $('#dispatchListTable').bootstrapTable('load', masterDispatchList);
+                updateDuplicatePlanAlert();
+            } catch (err) {
+                console.error('[Filter] 查詢調度單清單失敗:', err);
+                alert('查詢調度單清單失敗: ' + (err.message || '連線錯誤'));
+            }
+        }
+
+        // =========================================================================
+        // 9. 事件綁定 (Event Listeners)
+        // =========================================================================
+        function bindEvents() {
+            // 來源廠切換：動態更新目的廠(互斥排除) + 重載人員與衝突狀態
+            $('#sourceDept').on('change', async function () {
+                const dept = $(this).val();
+                updateTargetDeptOptions(dept);
+                await loadEmployeesForDepartment(dept);
+                await renderPersonnelChecklist(dept, []);
+                updateDuplicatePlanAlert();
+            });
+
+            // 調度日期變更：動態時間預設 + 即時重算人員衝突與單據重複提示
+            $('#dispatchDate').on('change', async function () {
+                const val = $(this).val();
+                if (!editingPlanId) {
+                    setDefaultTimeForDate(val);
+                }
+                await refreshPersonnelStatusPreserveChecked();
+                updateDuplicatePlanAlert();
+            });
+
+            // 調度時間手動輸入變更：即時重算人員狀態
+            $('#startTime, #endTime').on('change', async function () {
+                await refreshPersonnelStatusPreserveChecked();
+            });
+
+            $(document).on('change', '.emp-checkbox', function () {
+                updateSelectedEmpCount();
+            });
+
+            // 人員關鍵字即時過濾
+            $('#searchEmpInput').on('input', function () {
+                const kw = $(this).val().trim().toLowerCase();
+                $('.personnel-item').each(function () {
+                    const text = $(this).data('search').toLowerCase();
+                    $(this).toggle(text.includes(kw));
+                });
+            });
+
+            // 全選可用人員
+            $('#btnSelectAllEmp').on('click', function () {
+                $('.personnel-item:visible .emp-checkbox:not(:disabled)').prop('checked', true);
+                updateSelectedEmpCount();
+            });
+
+            // 清除勾選
+            $('#btnClearAllEmp').on('click', function () {
+                $('.emp-checkbox:not(:disabled)').prop('checked', false);
+                updateSelectedEmpCount();
+            });
+
+            // 【新增】子明細
+            $('#btnAddSubItem').on('click', async function () {
+                const prevSelected = selectedSubItemSeq;
+                selectedSubItemSeq = null;
+
+                const formData = validateAndReadForm();
+                if (!formData) {
+                    selectedSubItemSeq = prevSelected;
+                    return;
+                }
+
+                const empIds = formData.employees.map(e => e.id);
+
+                // 前端暫存明細時段重疊防呆
+                for (const it of currentSubItems) {
+                    if (it.dispatchDate === formData.dispatchDate && isTimeOverlap(it.startTime, it.endTime, formData.startTime, formData.endTime)) {
+                        const conflictEmp = (it.employees || []).find(e => empIds.includes(e.id || e.empId));
+                        if (conflictEmp) {
+                            alert(`人員衝突：[${conflictEmp.id || conflictEmp.empId}] ${conflictEmp.name} 在當日 ${it.startTime}~${it.endTime} 已排定支援 ${it.targetDeptName || it.targetDept}，時段重疊不可重複指派！`);
+                            selectedSubItemSeq = prevSelected;
+                            return;
+                        }
+                    }
+                }
+
+                // 後端排定前人員衝突檢驗 (傳入目標時段進行區間重疊比對)
+                try {
+                    const conflictRes = await API.post('/api/dispatch-plans/check-conflict', {
+                        dispatchDate: formData.dispatchDate,
+                        startTime: formData.startTime,
+                        endTime: formData.endTime,
+                        empIds: empIds,
+                        excludePlanNo: editingPlanId || undefined
+                    });
+
+                    if (conflictRes && Array.isArray(conflictRes.conflicts) && conflictRes.conflicts.length > 0) {
+                        const conflictMsg = conflictRes.conflicts.map(c =>
+                            `• [${c.empId}] ${c.name}：已調派至 ${c.targetDeptName} ${c.startTime || ''}~${c.endTime || ''}（單號：${c.planNo}）`
+                        ).join('\n');
+                        alert(`以下人員在 ${formData.dispatchDate} 的 ${formData.startTime}~${formData.endTime} 時段已有其他有效調派排程，不可重複指派：\n\n${conflictMsg}`);
+                        selectedSubItemSeq = prevSelected;
+                        return;
+                    }
+                } catch (err) {
+                    console.warn('[Conflict] 衝突檢查連線異常:', err);
+                }
+
+                const newSeq = currentSubItems.length + 1;
+                currentSubItems.push({
+                    seq: newSeq,
+                    ...formData
+                });
+
+                selectedSubItemSeq = null;
+                $('#targetDept').val('');
+                $('#purpose').val('');
+                setDefaultTimeForDate($('#dispatchDate').val());
+                refreshSubItemTable();
+                await renderPersonnelChecklist($('#sourceDept').val(), []);
+            });
+
+            // 【修改】子明細
+            $('#btnUpdateSubItem').on('click', async function () {
+                if (selectedSubItemSeq === null) return;
+                const currentItem = currentSubItems.find(it => it.seq === selectedSubItemSeq);
+                if (currentItem && isSubItemPassed(currentItem)) {
+                    alert(`調度開始時間已過去 (${currentItem.startTime})，無法更新為過去的時間！`);
+                    return;
+                }
+
+                const formData = validateAndReadForm();
+                if (!formData) return;
+
+                const empIds = formData.employees.map(e => e.id);
+
+                // 前端暫存明細時段重疊防呆 (排除自身)
+                for (const it of currentSubItems) {
+                    if (it.seq === selectedSubItemSeq) continue;
+                    if (it.dispatchDate === formData.dispatchDate && isTimeOverlap(it.startTime, it.endTime, formData.startTime, formData.endTime)) {
+                        const conflictEmp = (it.employees || []).find(e => empIds.includes(e.id || e.empId));
+                        if (conflictEmp) {
+                            alert(`人員衝突：[${conflictEmp.id || conflictEmp.empId}] ${conflictEmp.name} 在當日 ${it.startTime}~${it.endTime} 已排定支援 ${it.targetDeptName || it.targetDept}，時段重疊不可重複指派！`);
+                            return;
+                        }
+                    }
+                }
+
+                // 後端排定前人員衝突檢驗 (傳入目標時段進行區間重疊比對)
+                try {
+                    const conflictRes = await API.post('/api/dispatch-plans/check-conflict', {
+                        dispatchDate: formData.dispatchDate,
+                        startTime: formData.startTime,
+                        endTime: formData.endTime,
+                        empIds: empIds,
+                        excludePlanNo: editingPlanId || undefined
+                    });
+
+                    if (conflictRes && Array.isArray(conflictRes.conflicts) && conflictRes.conflicts.length > 0) {
+                        const conflictMsg = conflictRes.conflicts.map(c =>
+                            `• [${c.empId}] ${c.name}：已調派至 ${c.targetDeptName} ${c.startTime || ''}~${c.endTime || ''}（單號：${c.planNo}）`
+                        ).join('\n');
+                        alert(`以下人員在 ${formData.dispatchDate} 的 ${formData.startTime}~${formData.endTime} 時段已有其他有效調派排程，不可重複指派：\n\n${conflictMsg}`);
+                        return;
+                    }
+                } catch (err) {
+                    console.warn('[Conflict] 衝突檢查連線異常:', err);
+                }
+
+                const idx = currentSubItems.findIndex(item => item.seq === selectedSubItemSeq);
+                if (idx !== -1) {
+                    currentSubItems[idx] = {
+                        seq: selectedSubItemSeq,
+                        ...formData
+                    };
+                    refreshSubItemTable();
+                    await renderPersonnelChecklist(formData.sourceDeptId || $('#sourceDept').val(), formData.employees.map(e => e.id));
+                }
+            });
+
+            // 【刪除】子明細
+            $('#btnDeleteSubItem').on('click', async function () {
+                if (selectedSubItemSeq === null) return;
+                const currentItem = currentSubItems.find(it => it.seq === selectedSubItemSeq);
+                if (currentItem && isSubItemPassed(currentItem)) {
+                    alert(`調度開始時間已過去 (${currentItem.dispatchDate || ''} ${currentItem.startTime})，無法刪除過去的時間資料！`);
+                    return;
+                }
+
+                currentSubItems = currentSubItems.filter(item => item.seq !== selectedSubItemSeq);
+                selectedSubItemSeq = null;
+                $('#targetDept').val('');
+                $('#purpose').val('');
+                setDefaultTimeForDate($('#dispatchDate').val());
+                refreshSubItemTable();
+                await renderPersonnelChecklist($('#sourceDept').val(), []);
+            });
+
+            // 【儲存整張調度單】(新增 POST / 修改 PUT)
+            $('#btnSubmitPlan, #btnSavePlan').on('click', async function () {
+                if (currentSubItems.length === 0) {
+                    alert('請至少新增一筆支援調度明細後再儲存送出！');
+                    return;
+                }
+
+                const mainDate = $('#dispatchDate').val();
+                const mainSource = $('#sourceDept').val();
+
+                if (!mainDate || !mainSource) {
+                    alert('請提供調度日期與來源廠別！');
+                    return;
+                }
+
+                if (!editingPlanId) {
+                    const dup = checkDuplicatePlan(mainDate, mainSource);
+                    if (dup) {
+                        const deptText = $('#sourceDept option:selected').text() || mainSource;
+                        updateDuplicatePlanAlert();
+                        alert(`已建立過 ${mainDate} ${deptText} 的調度單`);
+                        return;
+                    }
+                }
+
+                // 組裝 RESTful Payload
+                const payload = {
+                    dispatchDate: mainDate,
+                    sourceDeptId: mainSource,
+                    items: currentSubItems.map((item, idx) => ({
+                        seq: idx + 1,
+                        targetDeptId: item.targetDeptId || item.targetDept,
+                        startTime: item.startTime,
+                        endTime: item.endTime,
+                        purpose: item.purpose || '',
+                        employees: (item.employees || []).map(e => ({
+                            empId: e.id || e.empId,
+                            name: e.name
+                        }))
+                    }))
+                };
+
+                const $btn = $(this);
+                $btn.prop('disabled', true);
+
+                try {
+                    if (editingPlanId) {
+                        await API.put('/api/dispatch-plans/' + editingPlanId, payload);
+                        alert(`調度單 ${editingPlanId} 更新成功！`);
+                    } else {
+                        const res = await API.post('/api/dispatch-plans', payload);
+                        alert(`調度單建立成功！`);
+                    }
+                    resetToCreateMode();
+                    await applyMasterFilter();
+                } catch (err) {
+                    console.error('[SavePlan] 儲存調度單失敗:', err);
+                    alert(err.message || '儲存調度單失敗，請重試！');
+                } finally {
+                    $btn.prop('disabled', false);
+                }
+            });
+
+            // 取消編輯，返回新增模式
+            $('#btnCancelPlanEdit').on('click', function () {
+                resetToCreateMode();
+            });
+
+            // 篩選工具列查詢與重設
+            $('#btnFilterQuery').on('click', applyMasterFilter);
+            $('#btnFilterReset').on('click', async function () {
+                initDefaultDates();
+                $('#filterDept').val(null).trigger('change');
+                $('#filterTargetDept').val(null).trigger('change');
+                if (fpFilterStartTime) fpFilterStartTime.clear();
+                else $('#filterStartTime').val('');
+                if (fpFilterEndTime) fpFilterEndTime.clear();
+                else $('#filterEndTime').val('');
+                $('#filterKeyword').val('');
+                await applyMasterFilter();
+            });
+        }
+    </script>
+</body>
+
+</html>
