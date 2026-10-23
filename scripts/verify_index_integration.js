@@ -51,7 +51,8 @@ async function run() {
         { desc: 'updateSubActionButtonsState 包含過去日期鎖定 btnSubmitPlan 與 btnAddSubItem 防呆', pass: /function\s+updateSubActionButtonsState[\s\S]*?curDate\s*<\s*todayStr[\s\S]*?#btnSubmitPlan,\s*#btnAddSubItem/.test(html) },
         { desc: 'dispatchDate 變更事件觸發 updateSubActionButtonsState', pass: /#dispatchDate[\s\S]*?updateSubActionButtonsState\(\)/.test(html) },
         { desc: '包含 isExcludedSourceDept 來源廠排除工程部與物流部邏輯', pass: html.includes('function isExcludedSourceDept(') },
-        { desc: 'loadDepartments 將來源廠 (#sourceDept, #filterDept) 排除工程部與物流部', pass: html.includes('sourceDeptList') && html.includes('#filterDept') && html.includes('#sourceDept') }
+        { desc: 'loadDepartments 將來源廠 (#sourceDept, #filterDept) 排除工程部與物流部', pass: html.includes('sourceDeptList') && html.includes('#filterDept') && html.includes('#sourceDept') },
+        { desc: '包含 updateMasterFieldsLockState 於新增模式有明細時鎖定 dispatchDate 與 sourceDept', pass: html.includes('function updateMasterFieldsLockState(') && /currentSubItems[\s\S]*?#dispatchDate,\s*#sourceDept[\s\S]*?prop\('disabled',\s*true\)/.test(html) }
     ];
 
     let allChecksPassed = true;

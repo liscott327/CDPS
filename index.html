@@ -1327,7 +1327,29 @@
             return false;
         }
 
+        /**
+         * 更新主表欄位（調度日期與來源廠）的鎖定狀態：
+         * - 檢視模式 或 修改模式：鎖定不可變更
+         * - 新增模式：若已有新增明細 (currentSubItems.length > 0) 則鎖定；若無明細 (0 筆) 則解除鎖定
+         */
+        function updateMasterFieldsLockState() {
+            if (isViewOnlyMode || editingPlanId) {
+                $('#dispatchDate, #sourceDept').prop('disabled', true);
+                return;
+            }
+
+            if (currentSubItems && currentSubItems.length > 0) {
+                $('#dispatchDate, #sourceDept').prop('disabled', true);
+                $('#dispatchDate, #sourceDept').attr('title', '已有排定明細，鎖定不可變更調度日期與來源廠（需送出該單或清空明細後方可修改）');
+            } else {
+                $('#dispatchDate, #sourceDept').prop('disabled', false);
+                $('#dispatchDate, #sourceDept').removeAttr('title');
+            }
+        }
+
         function updateSubActionButtonsState() {
+            updateMasterFieldsLockState();
+
             if (isViewOnlyMode) {
                 $('#btnSubmitPlan, #btnAddSubItem, #btnUpdateSubItem, #btnDeleteSubItem').prop('disabled', true);
                 $('#subItemPassedNotice').addClass('d-none');
