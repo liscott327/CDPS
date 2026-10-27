@@ -209,6 +209,61 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
     });
 
     // =========================================================================
+    // 1.1 GET /check-duplicate: 檢查某日期與來源廠是否已存在調度單 (到後端資料庫檢查)
+    // =========================================================================
+    router.get('/check-duplicate', async (req, res) => {
+        try {
+            const { dispatchDate, sourceDeptId, excludePlanNo } = req.query;
+            if (!dispatchDate || !sourceDeptId) {
+                return res.json({ success: true, exists: false });
+            }
+
+            const pool = getDbPool();
+            if (pool) {
+                const request = pool.request();
+                request.input('dispatchDate', sql.Date, dispatchDate);
+                request.input('sourceDeptId', sql.VarChar(10), sourceDeptId);
+                let querySql = `
+                    SELECT TOP 1 PlanNo, CONVERT(VARCHAR(10), DispatchDate, 120) AS dispatchDate, SourceDeptId
+                    FROM CustCPDSDispatchPlan_Master
+                    WHERE DispatchDate = @dispatchDate AND SourceDeptId = @sourceDeptId
+                `;
+                if (excludePlanNo) {
+                    request.input('excludePlanNo', sql.VarChar(15), excludePlanNo);
+                    querySql += ` AND PlanNo <> @excludePlanNo`;
+                }
+                const result = await request.query(querySql);
+                if (result.recordset.length > 0) {
+                    return res.json({
+                        success: true,
+                        exists: true,
+                        planNo: result.recordset[0].PlanNo
+                    });
+                }
+                return res.json({ success: true, exists: false });
+            }
+
+            // 備援模式
+            const found = memoryPlans.find(p =>
+                p.dispatchDate === dispatchDate &&
+                (p.sourceDeptId === sourceDeptId || p.sourceDeptName === sourceDeptId) &&
+                (!excludePlanNo || p.planNo !== excludePlanNo)
+            );
+            return res.json({
+                success: true,
+                exists: !!found,
+                planNo: found ? found.planNo : null
+            });
+        } catch (err) {
+            console.error('[Dispatch check-duplicate error]:', err);
+            return res.status(500).json({
+                success: false,
+                message: `重複檢查失敗: ${err.message}`
+            });
+        }
+    });
+
+    // =========================================================================
     // 2. GET /: 查詢調度單清單
     // =========================================================================
     router.get('/', async (req, res) => {
@@ -333,51 +388,58 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                 const planMap = new Map();
 
                 for (const row of result.recordset) {
-                    if (!planMap.has(row.planNo)) {
-                        planMap.set(row.planNo, {
-                            planNo: row.planNo,
-                            dispatchDate: row.dispatchDate,
-                            sourceDeptId: row.sourceDeptId,
-                            sourceDeptName: row.sourceDeptName,
-                            createUser: row.createUser,
-                            createUserName: row.createUserName,
-                            createTime: row.createTime,
+                    const planNo = row.planNo || row.PlanNo;
+                    if (!planNo) continue;
+
+                    if (!planMap.has(planNo)) {
+                        planMap.set(planNo, {
+                            planNo: planNo,
+                            dispatchDate: row.dispatchDate || row.DispatchDate,
+                            sourceDeptId: row.sourceDeptId || row.SourceDeptId,
+                            sourceDeptName: row.sourceDeptName || row.SourceDeptName,
+                            createUser: row.createUser || row.CreateUser,
+                            createUserName: row.createUserName || row.CreateUserName,
+                            createTime: row.createTime || row.CreateTime,
                             items: [],
                             itemsMap: new Map(),
                             totalEmpCount: 0
                         });
                     }
 
-                    const plan = planMap.get(row.planNo);
+                    const plan = planMap.get(planNo);
+                    const rawItemId = row.itemId != null ? row.itemId : row.ItemId;
+                    const seq = row.seq != null ? row.seq : row.Seq;
 
-                    if (row.itemId != null) {
-                        if (!plan.itemsMap.has(row.itemId)) {
+                    if (rawItemId != null || seq != null) {
+                        const itemKey = rawItemId != null ? String(rawItemId) : `seq_${seq}`;
+                        if (!plan.itemsMap.has(itemKey)) {
                             const itemObj = {
-                                itemId: row.itemId,
-                                seq: row.seq,
-                                targetDeptId: row.targetDeptId,
-                                targetDeptName: row.targetDeptName,
-                                startTime: row.startTime,
-                                endTime: row.endTime,
-                                purpose: row.purpose || '',
+                                itemId: rawItemId,
+                                seq: seq,
+                                targetDeptId: row.targetDeptId || row.TargetDeptId,
+                                targetDeptName: row.targetDeptName || row.TargetDeptName,
+                                startTime: row.startTime || row.StartTime,
+                                endTime: row.endTime || row.EndTime,
+                                purpose: row.purpose || row.Purpose || '',
                                 employees: []
                             };
-                            plan.itemsMap.set(row.itemId, itemObj);
+                            plan.itemsMap.set(itemKey, itemObj);
                             plan.items.push(itemObj);
                         }
 
-                        if (row.empId != null) {
-                            const itemObj = plan.itemsMap.get(row.itemId);
-                            const empKey = String(row.empId).trim().toUpperCase();
+                        const empId = row.empId != null ? row.empId : row.EmpId;
+                        if (empId != null) {
+                            const itemObj = plan.itemsMap.get(itemKey);
+                            const empKey = String(empId).trim().toUpperCase();
                             const alreadyExists = itemObj.employees.some(e => String(e.empId).trim().toUpperCase() === empKey);
                             if (!alreadyExists) {
                                 itemObj.employees.push({
-                                    detailId: row.detailId,
-                                    empId: row.empId,
-                                    name: row.empName,
-                                    title: row.empTitle,
-                                    deptName: row.empDeptName,
-                                    checkInStatus: row.checkInStatus
+                                    detailId: row.detailId != null ? row.detailId : row.DetailId,
+                                    empId: empId,
+                                    name: row.empName || row.EmpName,
+                                    title: row.empTitle || row.EmpTitle,
+                                    deptName: row.empDeptName || row.EmpDeptName,
+                                    checkInStatus: row.checkInStatus != null ? row.checkInStatus : row.CheckInStatus
                                 });
                                 plan.totalEmpCount += 1;
                             }
@@ -494,46 +556,51 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                 for (const row of result.recordset) {
                     if (!planObj) {
                         planObj = {
-                            planNo: row.planNo,
-                            dispatchDate: row.dispatchDate,
-                            sourceDeptId: row.sourceDeptId,
-                            sourceDeptName: row.sourceDeptName,
-                            createUser: row.createUser,
-                            createUserName: row.createUserName,
-                            createTime: row.createTime,
+                            planNo: row.planNo || row.PlanNo,
+                            dispatchDate: row.dispatchDate || row.DispatchDate,
+                            sourceDeptId: row.sourceDeptId || row.SourceDeptId,
+                            sourceDeptName: row.sourceDeptName || row.SourceDeptName,
+                            createUser: row.createUser || row.CreateUser,
+                            createUserName: row.createUserName || row.CreateUserName,
+                            createTime: row.createTime || row.CreateTime,
                             items: [],
                             totalEmpCount: 0
                         };
                     }
 
-                    if (row.itemId != null) {
-                        if (!itemsMap.has(row.itemId)) {
+                    const rawItemId = row.itemId != null ? row.itemId : row.ItemId;
+                    const seq = row.seq != null ? row.seq : row.Seq;
+
+                    if (rawItemId != null || seq != null) {
+                        const itemKey = rawItemId != null ? String(rawItemId) : `seq_${seq}`;
+                        if (!itemsMap.has(itemKey)) {
                             const item = {
-                                itemId: row.itemId,
-                                seq: row.seq,
-                                targetDeptId: row.targetDeptId,
-                                targetDeptName: row.targetDeptName,
-                                startTime: row.startTime,
-                                endTime: row.endTime,
-                                purpose: row.purpose || '',
+                                itemId: rawItemId,
+                                seq: seq,
+                                targetDeptId: row.targetDeptId || row.TargetDeptId,
+                                targetDeptName: row.targetDeptName || row.TargetDeptName,
+                                startTime: row.startTime || row.StartTime,
+                                endTime: row.endTime || row.EndTime,
+                                purpose: row.purpose || row.Purpose || '',
                                 employees: []
                             };
-                            itemsMap.set(row.itemId, item);
+                            itemsMap.set(itemKey, item);
                             planObj.items.push(item);
                         }
 
-                        if (row.empId != null) {
-                            const item = itemsMap.get(row.itemId);
-                            const empKey = String(row.empId).trim().toUpperCase();
+                        const empId = row.empId != null ? row.empId : row.EmpId;
+                        if (empId != null) {
+                            const item = itemsMap.get(itemKey);
+                            const empKey = String(empId).trim().toUpperCase();
                             const alreadyExists = item.employees.some(e => String(e.empId).trim().toUpperCase() === empKey);
                             if (!alreadyExists) {
                                 item.employees.push({
-                                    detailId: row.detailId,
-                                    empId: row.empId,
-                                    name: row.empName,
-                                    title: row.empTitle,
-                                    deptName: row.empDeptName,
-                                    checkInStatus: row.checkInStatus
+                                    detailId: row.detailId != null ? row.detailId : row.DetailId,
+                                    empId: empId,
+                                    name: row.empName || row.EmpName,
+                                    title: row.empTitle || row.EmpTitle,
+                                    deptName: row.empDeptName || row.EmpDeptName,
+                                    checkInStatus: row.checkInStatus != null ? row.checkInStatus : row.CheckInStatus
                                 });
                                 planObj.totalEmpCount += 1;
                             }
@@ -951,20 +1018,56 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                 });
             }
 
-            // 1.1 檢核是否有現場已簽到之同仁 (CheckInStatus 1: 已簽到, 2: 逾期簽到)
-            const checkInCheckReq = pool.request();
-            checkInCheckReq.input('planNo', sql.VarChar(15), planNo);
-            const checkInRes = await checkInCheckReq.query(`
-                SELECT COUNT(*) AS checkedInCount
-                FROM CustCPDSDispatchPlan_Detail d
-                INNER JOIN CustCPDSDispatchPlan_Item i ON i.ItemId = d.ItemId
-                WHERE i.PlanNo = @planNo AND d.CheckInStatus IN (1, 2)
+            // 1.1 查詢原單既有的 Items 與 Details (含已簽到同仁資訊，避免覆蓋簽到狀態)
+            const existingDetailsReq = pool.request();
+            existingDetailsReq.input('planNo', sql.VarChar(15), planNo);
+            const existingDetailsRes = await existingDetailsReq.query(`
+                SELECT 
+                    i.ItemId AS itemId,
+                    i.Seq AS seq,
+                    i.TargetDeptId AS targetDeptId,
+                    d.DetailId AS detailId,
+                    d.EmpId AS empId,
+                    d.CheckInStatus AS checkInStatus,
+                    d.CheckInTime AS checkInTime,
+                    d.CheckInMethod AS checkInMethod,
+                    d.ConfirmUser AS confirmUser,
+                    d.AbnormalReason AS abnormalReason
+                FROM CustCPDSDispatchPlan_Item i
+                LEFT JOIN CustCPDSDispatchPlan_Detail d ON d.ItemId = i.ItemId
+                WHERE i.PlanNo = @planNo
             `);
-            if (checkInRes.recordset[0].checkedInCount > 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: `該調度單現場已有 ${checkInRes.recordset[0].checkedInCount} 位同仁完成簽到，受保護無法覆蓋修改！`
-                });
+            const existingRows = existingDetailsRes.recordset;
+
+            // 若原單時段中有已完成現場簽到的同仁，檢查其時段是否被整筆移除
+            const checkedInDetails = existingRows.filter(r => r.detailId != null && (r.checkInStatus === 1 || r.checkInStatus === 2));
+            for (const chk of checkedInDetails) {
+                const itemStillPresent = items.some(it => it.itemId === chk.itemId || (!it.itemId && it.seq === chk.seq));
+                if (!itemStillPresent) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `第 ${chk.seq} 個時段已有同仁完成簽到，無法整筆時段刪除！`
+                    });
+                }
+            }
+
+            // 確保所有已簽到的同仁都被保留在對應的 item 中
+            for (const item of items) {
+                const matchItemId = item.itemId || (existingRows.find(r => r.seq === item.seq) || {}).itemId;
+                if (matchItemId) {
+                    const itemCheckedIns = checkedInDetails.filter(c => c.itemId === matchItemId);
+                    for (const chk of itemCheckedIns) {
+                        const exists = (item.employees || []).some(e => (e.empId || e.id || '').trim() === chk.empId.trim());
+                        if (!exists) {
+                            if (!item.employees) item.employees = [];
+                            item.employees.push({
+                                empId: chk.empId,
+                                name: chk.empId,
+                                checkInStatus: chk.checkInStatus
+                            });
+                        }
+                    }
+                }
             }
 
             // 2. 檢核人員衝突（排除自己這張單，區間重疊比對）
@@ -1038,46 +1141,98 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                     WHERE PlanNo = @planNo
                 `);
 
-                // 刪除既有 Items (因 CASCADE DELETE，Detail 會自動一併刪除)
-                const deleteItemsReq = transaction.request();
-                deleteItemsReq.input('planNo', sql.VarChar(15), planNo);
-                await deleteItemsReq.query(`
-                    DELETE FROM CustCPDSDispatchPlan_Item WHERE PlanNo = @planNo
-                `);
+                // 收集既有 ItemId 清單 (以字串標準化避免型別比對失真)
+                const existingItemIds = [...new Set(existingRows.map(r => r.itemId != null ? String(r.itemId) : '').filter(Boolean))];
+                const processedItemIds = [];
 
-                // 重新寫入新 Items 與 Details
                 for (let seqIdx = 0; seqIdx < items.length; seqIdx++) {
                     const item = items[seqIdx];
                     const seq = item.seq || (seqIdx + 1);
+                    let targetItemId = item.itemId != null ? item.itemId : null;
 
-                    const itemReq = transaction.request();
-                    itemReq.input('planNo', sql.VarChar(15), planNo);
-                    itemReq.input('seq', sql.SmallInt, seq);
-                    itemReq.input('dispatchDate', sql.Date, dispatchDate);
-                    itemReq.input('targetDeptId', sql.VarChar(10), item.targetDeptId);
-                    itemReq.input('startTime', sql.VarChar(10), item.startTime);
-                    itemReq.input('endTime', sql.VarChar(10), item.endTime);
-                    itemReq.input('purpose', sql.NVarChar(100), item.purpose || '');
+                    // 若未提供 itemId，嘗試比對同 seq 的既有 item
+                    if (!targetItemId) {
+                        const matched = existingRows.find(r => r.seq === seq);
+                        if (matched && !processedItemIds.map(String).includes(String(matched.itemId))) {
+                            targetItemId = matched.itemId;
+                        }
+                    }
 
-                    const itemResult = await itemReq.query(`
-                        INSERT INTO CustCPDSDispatchPlan_Item (PlanNo, Seq, DispatchDate, TargetDeptId, StartTime, EndTime, Purpose, CreateTime)
-                        VALUES (@planNo, @seq, @dispatchDate, @targetDeptId, @startTime, @endTime, @purpose, GETDATE());
-                        SELECT SCOPE_IDENTITY() AS ItemId;
-                    `);
+                    const isExisting = targetItemId != null && existingItemIds.includes(String(targetItemId));
 
-                    const itemId = itemResult.recordset[0].ItemId;
-
-                    for (const emp of item.employees) {
-                        const detailReq = transaction.request();
-                        detailReq.input('itemId', sql.BigInt, itemId);
-                        detailReq.input('dispatchDate', sql.Date, dispatchDate);
-                        detailReq.input('empId', sql.VarChar(10), emp.empId.trim());
-                        detailReq.input('status', sql.TinyInt, emp.checkInStatus !== undefined ? Number(emp.checkInStatus) : 0);
-
-                        await detailReq.query(`
-                            INSERT INTO CustCPDSDispatchPlan_Detail (ItemId, DispatchDate, EmpId, CheckInStatus, CreateTime)
-                            VALUES (@itemId, @dispatchDate, @empId, @status, GETDATE())
+                    if (isExisting) {
+                        // 更新既有 Item (保留 ItemId 避免觸發 CASCADE 刪除簽到明細)
+                        const updateItemReq = transaction.request();
+                        updateItemReq.input('itemId', sql.BigInt, targetItemId);
+                        updateItemReq.input('seq', sql.SmallInt, seq);
+                        updateItemReq.input('targetDeptId', sql.VarChar(10), item.targetDeptId);
+                        updateItemReq.input('startTime', sql.VarChar(10), normalizeTime(item.startTime));
+                        updateItemReq.input('endTime', sql.VarChar(10), normalizeTime(item.endTime));
+                        updateItemReq.input('purpose', sql.NVarChar(100), item.purpose || '');
+                        await updateItemReq.query(`
+                            UPDATE CustCPDSDispatchPlan_Item
+                            SET Seq = @seq, TargetDeptId = @targetDeptId, StartTime = @startTime, EndTime = @endTime, Purpose = @purpose, UpdateTime = GETDATE()
+                            WHERE ItemId = @itemId
                         `);
+                    } else {
+                        // 新增 Item
+                        const insertItemReq = transaction.request();
+                        insertItemReq.input('planNo', sql.VarChar(15), planNo);
+                        insertItemReq.input('seq', sql.SmallInt, seq);
+                        insertItemReq.input('dispatchDate', sql.Date, dispatchDate);
+                        insertItemReq.input('targetDeptId', sql.VarChar(10), item.targetDeptId);
+                        insertItemReq.input('startTime', sql.VarChar(10), normalizeTime(item.startTime));
+                        insertItemReq.input('endTime', sql.VarChar(10), normalizeTime(item.endTime));
+                        insertItemReq.input('purpose', sql.NVarChar(100), item.purpose || '');
+                        const itemRes = await insertItemReq.query(`
+                            INSERT INTO CustCPDSDispatchPlan_Item (PlanNo, Seq, DispatchDate, TargetDeptId, StartTime, EndTime, Purpose, CreateTime)
+                            VALUES (@planNo, @seq, @dispatchDate, @targetDeptId, @startTime, @endTime, @purpose, GETDATE());
+                            SELECT SCOPE_IDENTITY() AS ItemId;
+                        `);
+                        targetItemId = itemRes.recordset[0].ItemId;
+                    }
+                    processedItemIds.push(String(targetItemId));
+
+                    // 處理該 Item 之 Details 人員清單
+                    const currentItemDetails = existingRows.filter(r => String(r.itemId) === String(targetItemId) && r.detailId != null);
+                    const incomingEmpIds = (item.employees || []).map(e => (e.empId || e.id || '').trim()).filter(Boolean);
+
+                    // 1) 刪除未被選取且「尚未簽到」之同仁 (CheckInStatus 0 或 3 異常)
+                    for (const prevDetail of currentItemDetails) {
+                        if (!incomingEmpIds.includes(prevDetail.empId.trim())) {
+                            if (prevDetail.checkInStatus !== 1 && prevDetail.checkInStatus !== 2) {
+                                const delReq = transaction.request();
+                                delReq.input('detailId', sql.BigInt, prevDetail.detailId);
+                                await delReq.query(`DELETE FROM CustCPDSDispatchPlan_Detail WHERE DetailId = @detailId`);
+                            }
+                        }
+                    }
+
+                    // 2) 新增尚未存在於該時段的同仁 (以狀態 0 待簽到寫入)
+                    const existingEmpIdsInItem = currentItemDetails.map(d => d.empId.trim());
+                    for (const emp of item.employees) {
+                        const empId = (emp.empId || emp.id || '').trim();
+                        if (!empId) continue;
+                        if (!existingEmpIdsInItem.includes(empId)) {
+                            const addDetailReq = transaction.request();
+                            addDetailReq.input('itemId', sql.BigInt, targetItemId);
+                            addDetailReq.input('dispatchDate', sql.Date, dispatchDate);
+                            addDetailReq.input('empId', sql.VarChar(10), empId);
+                            addDetailReq.input('status', sql.TinyInt, 0);
+                            await addDetailReq.query(`
+                                INSERT INTO CustCPDSDispatchPlan_Detail (ItemId, DispatchDate, EmpId, CheckInStatus, CreateTime)
+                                VALUES (@itemId, @dispatchDate, @empId, @status, GETDATE())
+                            `);
+                        }
+                    }
+                }
+
+                // 3) 刪除未在更新列表中的舊 Items (已確認無已簽到同仁)
+                for (const oldItemId of existingItemIds) {
+                    if (!processedItemIds.includes(String(oldItemId))) {
+                        const delItemReq = transaction.request();
+                        delItemReq.input('itemId', sql.BigInt, oldItemId);
+                        await delItemReq.query(`DELETE FROM CustCPDSDispatchPlan_Item WHERE ItemId = @itemId`);
                     }
                 }
 
@@ -1137,23 +1292,35 @@ function createDispatchRouter({ getDbPool, sql, JWT_SECRET }) {
                 conflicts: memConflicts
             });
         }
-        memoryPlans[idx].items = items.map((it, i) => ({
-            itemId: Date.now() + i,
-            seq: i + 1,
-            targetDeptId: it.targetDeptId,
-            targetDeptName: it.targetDeptId,
-            startTime: it.startTime,
-            endTime: it.endTime,
-            purpose: it.purpose || '',
-            employees: it.employees.map((e, ei) => ({
-                detailId: Date.now() + 100 + ei,
-                empId: e.empId,
-                name: e.name || e.empId,
-                title: '同仁',
-                deptName: sourceDeptId,
-                checkInStatus: e.checkInStatus !== undefined ? Number(e.checkInStatus) : 0
-            }))
-        }));
+        const prevMemItems = memoryPlans[idx].items || [];
+        memoryPlans[idx].items = items.map((it, i) => {
+            const prevItem = prevMemItems.find(pi => pi.itemId === it.itemId || pi.seq === it.seq) || {};
+            const prevEmps = prevItem.employees || [];
+            return {
+                itemId: it.itemId || prevItem.itemId || (Date.now() + i),
+                seq: it.seq || (i + 1),
+                targetDeptId: it.targetDeptId,
+                targetDeptName: it.targetDeptName || it.targetDeptId,
+                startTime: it.startTime,
+                endTime: it.endTime,
+                purpose: it.purpose || '',
+                employees: it.employees.map((e, ei) => {
+                    const prevEmp = prevEmps.find(pe => pe.empId === (e.empId || e.id));
+                    return {
+                        detailId: (prevEmp && prevEmp.detailId) || (Date.now() + 100 + ei),
+                        empId: e.empId || e.id,
+                        name: e.name || e.empId,
+                        title: e.title || (prevEmp && prevEmp.title) || '同仁',
+                        deptName: sourceDeptId,
+                        checkInStatus: prevEmp ? Number(prevEmp.checkInStatus || 0) : 0,
+                        checkInTime: prevEmp ? prevEmp.checkInTime : null,
+                        checkInMethod: prevEmp ? prevEmp.checkInMethod : null,
+                        confirmUser: prevEmp ? prevEmp.confirmUser : null,
+                        abnormalReason: prevEmp ? prevEmp.abnormalReason : null
+                    };
+                })
+            };
+        });
 
         return res.json({
             success: true,

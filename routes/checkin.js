@@ -55,6 +55,14 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
         return `${hours}:${minutes}`;
     }
 
+    function getTodayDateStr() {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+    }
+
     function formatTimeFromDb(val) {
         if (!val) return '';
         if (val instanceof Date) {
@@ -306,8 +314,37 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
             const cleanEmpId = empId.trim().toUpperCase();
             const nowTimeStr = currentTime || getCurrentTimeStr();
             const nowMinutes = parseTimeToMinutes(nowTimeStr);
-
+            const todayStr = getTodayDateStr();
             const pool = getDbPool();
+
+            // 嚴格校驗：必須為當日調度時間
+            if (dispatchDate && dispatchDate !== todayStr) {
+                let empName = cleanEmpId;
+                if (pool && sql) {
+                    try {
+                        const nameReq = pool.request();
+                        nameReq.input('empId', sql.VarChar(10), cleanEmpId);
+                        const nameRes = await nameReq.query(`
+                            SELECT TOP 1 EmpName FROM vw_CPDS_DispatchDetail WHERE UPPER(EmpId) = @empId
+                        `);
+                        if (nameRes.recordset && nameRes.recordset.length > 0) {
+                            empName = nameRes.recordset[0].EmpName;
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                } else {
+                    const memRec = memoryCheckinRecords.find(r => r.id.toUpperCase() === cleanEmpId);
+                    if (memRec) empName = memRec.name;
+                }
+
+                return res.status(400).json({
+                    success: false,
+                    type: 'TIME_ERROR',
+                    message: `非簽到時間<br>${cleanEmpId} ${empName}<br>非當日調度時間，不可簽到（調度日期: ${dispatchDate}）`
+                });
+            }
+
             if (pool && sql) {
                 const checkReq = pool.request();
                 checkReq.input('deptId', sql.VarChar(10), deptId);
@@ -332,16 +369,6 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                 const allRecords = checkRes.recordset;
                 const empName = allRecords[0].EmpName;
 
-                // 排除已標記異常之明細 (CheckInStatus = 3)
-                const activeRecords = allRecords.filter(r => r.CheckInStatus !== 3);
-                if (activeRecords.length === 0) {
-                    return res.status(400).json({
-                        success: false,
-                        type: 'ABNORMAL_RECORD',
-                        message: `發生錯誤<br>${cleanEmpId} ${empName}<br>今日調度明細已全數標記異常`
-                    });
-                }
-
                 const parseSlot = (row) => {
                     const sStr = formatTimeFromDb(row.StartTime);
                     const eStr = formatTimeFromDb(row.EndTime);
@@ -351,13 +378,13 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                 };
 
                 // 檢驗有效窗口：嚴格限制在「調度時段開始後 ~ 調度時段結束前」(nowMinutes >= startMin && nowMinutes <= endMin)
-                const matchingSlots = activeRecords.filter(row => {
+                const matchingSlots = allRecords.filter(row => {
                     const { sMin, eMin } = parseSlot(row);
                     return sMin !== null && eMin !== null && nowMinutes >= sMin && nowMinutes <= eMin;
                 });
 
                 if (matchingSlots.length === 0) {
-                    const slotListStr = activeRecords.map(row => {
+                    const slotListStr = allRecords.map(row => {
                         const { sStr, eStr } = parseSlot(row);
                         return `${sStr}~${eStr}`;
                     }).join(', ');
@@ -365,7 +392,7 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                     return res.status(400).json({
                         success: false,
                         type: 'TIME_ERROR',
-                        message: `發生錯誤<br>${cleanEmpId} ${empName}<br>應於調度時間內（時段開始後~結束前）簽到（今日時段: ${slotListStr}）`
+                        message: `非簽到時間<br>${cleanEmpId} ${empName}<br>應於調度時間內簽到（今日時段: ${slotListStr}）`
                     });
                 }
 
@@ -373,6 +400,15 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                 const targetRow = matchingSlots.find(row => row.CheckInStatus === 0);
 
                 if (!targetRow) {
+                    // 若當前命中時段已標記為異常 (CheckInStatus === 3)
+                    const abnormalRow = matchingSlots.find(row => row.CheckInStatus === 3);
+                    if (abnormalRow) {
+                        return res.status(400).json({
+                            success: false,
+                            type: 'ABNORMAL_RECORD',
+                            message: `發生錯誤<br>${cleanEmpId} ${empName}<br>今日調度明細已標記異常`
+                        });
+                    }
                     return res.status(400).json({
                         success: false,
                         type: 'DUPLICATE',
@@ -436,15 +472,6 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
             }
 
             const empName = userRecords[0].name;
-            const activeRecords = userRecords.filter(r => String(r.status) !== '3');
-
-            if (activeRecords.length === 0) {
-                return res.status(400).json({
-                    success: false,
-                    type: 'ABNORMAL_RECORD',
-                    message: `發生錯誤<br>${cleanEmpId} ${empName}<br>今日調度明細已全數標記異常`
-                });
-            }
 
             const parseMemorySlot = (rec) => {
                 const sStr = rec.startTime || (rec.dispatchTime ? rec.dispatchTime.split('~')[0] : '08:00');
@@ -454,13 +481,13 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                 return { sStr, eStr, sMin, eMin };
             };
 
-            const matchingSlots = activeRecords.filter(rec => {
+            const matchingSlots = userRecords.filter(rec => {
                 const { sMin, eMin } = parseMemorySlot(rec);
                 return sMin !== null && eMin !== null && nowMinutes >= sMin && nowMinutes <= eMin;
             });
 
             if (matchingSlots.length === 0) {
-                const slotListStr = activeRecords.map(r => {
+                const slotListStr = userRecords.map(r => {
                     const { sStr, eStr } = parseMemorySlot(r);
                     return `${sStr}~${eStr}`;
                 }).join(', ');
@@ -468,12 +495,20 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                 return res.status(400).json({
                     success: false,
                     type: 'TIME_ERROR',
-                    message: `發生錯誤<br>${cleanEmpId} ${empName}<br>應於調度時間內（時段開始後~結束前）簽到（今日時段: ${slotListStr}）`
+                    message: `非簽到時間<br>${cleanEmpId} ${empName}<br>應於調度時間內簽到（今日時段: ${slotListStr}）`
                 });
             }
 
             const targetRecord = matchingSlots.find(r => String(r.status) === '0');
             if (!targetRecord) {
+                const abnormalRec = matchingSlots.find(r => String(r.status) === '3');
+                if (abnormalRec) {
+                    return res.status(400).json({
+                        success: false,
+                        type: 'ABNORMAL_RECORD',
+                        message: `發生錯誤<br>${cleanEmpId} ${empName}<br>今日調度明細已標記異常`
+                    });
+                }
                 return res.status(400).json({
                     success: false,
                     type: 'DUPLICATE',
@@ -533,7 +568,7 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                     const reqRow = pool.request();
                     reqRow.input('detailId', sql.BigInt, detailId);
                     const rowRes = await reqRow.query(`
-                        SELECT DetailId, StartTime, EndTime, EmpId, EmpName, CheckInStatus
+                        SELECT DetailId, StartTime, EndTime, EmpId, EmpName, CheckInStatus, CONVERT(VARCHAR(10), DispatchDate, 120) AS DispatchDate
                         FROM vw_CPDS_DispatchDetail
                         WHERE DetailId = @detailId
                     `);
@@ -548,7 +583,7 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                     reqRow.input('dispatchDate', sql.Date, dispatchDate || null);
 
                     const rowRes = await reqRow.query(`
-                        SELECT DetailId, StartTime, EndTime, EmpId, EmpName, CheckInStatus
+                        SELECT DetailId, StartTime, EndTime, EmpId, EmpName, CheckInStatus, CONVERT(VARCHAR(10), DispatchDate, 120) AS DispatchDate
                         FROM vw_CPDS_DispatchDetail
                         WHERE UPPER(EmpId) = @empId
                           AND (@deptId IS NULL OR TargetDeptId = @deptId)
@@ -571,8 +606,30 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                     return res.status(404).json({ success: false, message: '找不到該調派記錄！' });
                 }
 
+                // 嚴格校驗：主管代簽必須在當天且調度時段內 (開始後 ~ 結束前)
+                const todayStr = getTodayDateStr();
+                const targetDate = row.DispatchDate ? String(row.DispatchDate).slice(0, 10) : (dispatchDate || todayStr);
+                if (targetDate !== todayStr) {
+                    return res.status(400).json({
+                        success: false,
+                        type: 'TIME_ERROR',
+                        message: `非簽到時間<br>${row.EmpId} ${row.EmpName}<br>非當日調度時間，不可進行主管代簽`
+                    });
+                }
+
                 const startStr = formatTimeFromDb(row.StartTime);
+                const endStr = formatTimeFromDb(row.EndTime);
                 const startMin = parseTimeToMinutes(startStr);
+                const endMin = parseTimeToMinutes(endStr);
+
+                if (startMin !== null && endMin !== null && (nowMinutes < startMin || nowMinutes > endMin)) {
+                    return res.status(400).json({
+                        success: false,
+                        type: 'TIME_ERROR',
+                        message: `非簽到時間<br>${row.EmpId} ${row.EmpName}<br>應於調度時間內進行代簽（時段: ${startStr}~${endStr}）`
+                    });
+                }
+
                 const newStatus = (startMin !== null && nowMinutes > (startMin + 10)) ? 2 : 1;
 
                 const updateReq = pool.request();
@@ -629,7 +686,30 @@ function createCheckinRouter({ getDbPool, sql, JWT_SECRET }) {
                 return res.status(404).json({ success: false, message: '找不到該調派記錄！' });
             }
 
-            const startMin = parseTimeToMinutes(item.startTime || '10:00');
+            // 嚴格校驗：主管代簽必須在當天且調度時段內 (開始後 ~ 結束前)
+            const todayStr = getTodayDateStr();
+            const targetDate = dispatchDate || item.dispatchDate || todayStr;
+            if (targetDate !== todayStr) {
+                return res.status(400).json({
+                    success: false,
+                    type: 'TIME_ERROR',
+                    message: `非簽到時間<br>${item.id} ${item.name}<br>非當日調度時間，不可進行主管代簽`
+                });
+            }
+
+            const sStr = item.startTime || (item.dispatchTime ? item.dispatchTime.split('~')[0] : '08:00');
+            const eStr = item.endTime || (item.dispatchTime ? item.dispatchTime.split('~')[1] : '17:00');
+            const startMin = parseTimeToMinutes(sStr);
+            const endMin = parseTimeToMinutes(eStr);
+
+            if (startMin !== null && endMin !== null && (nowMinutes < startMin || nowMinutes > endMin)) {
+                return res.status(400).json({
+                    success: false,
+                    type: 'TIME_ERROR',
+                    message: `非簽到時間<br>${item.id} ${item.name}<br>應於調度時間內進行代簽（時段: ${sStr}~${eStr}）`
+                });
+            }
+
             const newStatus = (startMin !== null && nowMinutes > (startMin + 10)) ? '2' : '1';
             item.status = newStatus;
             item.time = nowTimeStr;

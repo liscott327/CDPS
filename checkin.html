@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPDS 現場簽到作業</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Bootstrap Table CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/bootstrap-table@1.22.1/dist/bootstrap-table.min.css">
+
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        /* 美化 QR Code 掃描按鈕 */
+        .btn-scan {
+            border: 2px dashed #dc3545;
+            color: #dc3545;
+            transition: all 0.3s;
+            background-color: #fff;
+        }
+
+        .btn-scan:hover,
+        .btn-scan:active {
+            background-color: #dc3545;
+            color: #fff;
+        }
+
+        /* 表格垂直置中與依內容自動展開 */
+        .table td,
+        .table th {
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        /* TabView 頁籤導覽列樣式 */
+        .navbar-nav-tabs .nav-link {
+            font-weight: 500;
+            font-size: 0.95rem;
+            padding: 0.6rem 1.25rem;
+            color: rgba(255, 255, 255, 0.7);
+            border-radius: 6px 6px 0 0;
+            margin-right: 4px;
+            transition: all 0.2s ease-in-out;
+            border-bottom: 3px solid transparent;
+        }
+
+        .navbar-nav-tabs .nav-link:hover {
+            color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .navbar-nav-tabs .nav-link.active {
+            font-weight: 700;
+            color: #ffffff !important;
+            background-color: rgba(255, 255, 255, 0.12);
+            border-bottom: 3px solid #0d6efd;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- 頂部共用導覽列 (Navbar TabView) -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm py-2">
+        <div class="container px-4">
+            <a class="navbar-brand d-flex align-items-center" href="index.html">
+                <i class=" bi bi-arrow-left-right text-primary me-2 fs-5"></i>
+                <span>CPDS 跨廠人員調度與簽到系統</span>
+            </a>
+
+            <!-- 導覽列選單切換按鈕 (RWD 手機版) -->
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMainCollapse"
+                aria-controls="navbarMainCollapse" aria-expanded="false" aria-label="切換選單">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="navbarMainCollapse">
+                <!-- 功能選單項目 (調度 / 簽到 / 報表) -->
+                <ul class="navbar-nav navbar-nav-tabs me-auto ms-lg-4 mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link d-flex align-items-center" href="index.html">
+                            <i class=" bi bi-arrow-left-right me-1"></i>調度
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active d-flex align-items-center" aria-current="page" href="checkin.html">
+                            <i class="bi bi-clipboard-check me-1"></i>簽到
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link d-flex align-items-center" href="report.html">
+                            <i class="bi bi-file-earmark-bar-graph me-1"></i>報表
+                        </a>
+                    </li>
+                </ul>
+
+                <!-- 使用者身分資訊與登出按鈕注入點 -->
+                <div id="navbarUserArea" class="ms-lg-auto">
+                    <!-- 由 scripts/auth.js 動態渲染 -->
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-md pb-5 mt-4">
+
+        <!-- 廠區與日期資訊及頂部掃描輸入與結果區 -->
+        <div class="alert alert-primary shadow-sm border-0 mb-4 py-2 px-3" role="alert">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <!-- 左側：標題與廠別資訊 -->
+                <div class="d-flex align-items-center flex-wrap gap-2 me-auto">
+                    <h4 class="mb-0 fw-bold text-dark me-2 text-nowrap">現場簽到作業</h4>
+                    <div class="vr mx-2 text-primary opacity-50 d-none d-sm-inline-block" style="height: 28px;"></div>
+                    <div class="d-flex align-items-center text-nowrap">
+                        <i class="bi bi-geo-alt-fill fs-4 me-2 text-primary"></i>
+                        <h5 class="mb-0 fw-bold" id="pageTitleInfo">載入中...</h5>
+                    </div>
+                </div>
+
+                <!-- 右側群組：掃描工號輸入框與掃描結果框縮短並靠右對齊 -->
+                <div class="d-flex align-items-center justify-content-end flex-wrap gap-2 ms-auto">
+                    <!-- 輸入工號欄位 (縮短寬度) -->
+                    <div style="width: 200px;">
+                        <div class="input-group shadow-sm">
+                            <span class="input-group-text bg-white border-end-0 text-primary px-2">
+                                <i class="bi bi-upc-scan fs-5"></i>
+                            </span>
+                            <input type="text" id="barcodeInput"
+                                class="form-control border-start-0 ps-0 fw-bold text-dark" style="font-size: 0.9rem;"
+                                placeholder="掃描/輸入工號..." autocomplete="off">
+                        </div>
+                    </div>
+
+                    <!-- 即時掃描結果呈現區 (縮短寬度並靠右) -->
+                    <div id="scanResultContainer">
+                        <div id="scanResultArea"
+                            class="alert alert-light border shadow-sm mb-0 py-2 px-3 d-flex align-items-center"
+                            style="min-width: 290px; min-height: 68px; transition: all 0.25s ease;">
+                            <i class="bi bi-qr-code text-muted me-3 fs-2 flex-shrink-0"></i>
+                            <div class="d-flex flex-column text-start lh-sm">
+                                <span class="fw-bold text-secondary fs-6">等待掃描簽到</span>
+                                <span class="text-muted" style="font-size: 0.95rem;">請輸入工號或掃碼</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 已簽到區塊 -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-success text-white py-3">
+                <h6 class="card-title mb-0 fw-bold">
+                    <i class="bi bi-person-check-fill me-2"></i>已簽到 (<span id="checked-in-count">0</span>人)
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <table id="checked-in-table" class="table-hover table-striped"></table>
+            </div>
+        </div>
+
+        <!-- 待簽到區塊 -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-danger text-white py-3">
+                <h6 class="card-title mb-0 fw-bold">
+                    <i class="bi bi-person-dash-fill me-2"></i>待簽到 (<span id="not-checked-in-count">0</span>人)
+                </h6>
+            </div>
+            <div class="card-body p-0">
+                <table id="not-checked-in-table" class="table-hover"></table>
+            </div>
+        </div>
+
+        <!-- 異常標記區塊 -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-warning text-dark py-2 d-flex justify-content-between align-items-center">
+                <h6 class="card-title mb-0 fw-bold">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>異常標記 (<span id="abnormal-count">0</span>人)
+                </h6>
+                <button type="button" class="btn btn-sm btn-dark fw-semibold shadow-sm px-3 py-1"
+                    id="btn-save-all-abnormal" onclick="saveAllAbnormal()">
+                    <i class="bi bi-save me-1"></i>儲存所有異常原因
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <table id="abnormal-table" class="table-hover table-striped"></table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 操作提示 Toast 浮動訊息 -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+        <div id="actionToast" class="toast align-items-center text-bg-success border-0 shadow" role="alert"
+            aria-live="assertive" aria-atomic="true">
+            <div class="d-flex">
+                <div class="toast-body fw-medium" id="toastMessage">
+                    已成功儲存所有異常原因記錄！
+                </div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"
+                    aria-label="Close"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- jQuery (Bootstrap Table 依賴) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Bootstrap Table JS -->
+    <script src="https://unpkg.com/bootstrap-table@1.22.1/dist/bootstrap-table.min.js"></script>
+    <!-- Auth 守門員與身分渲染 -->
+    <script src="scripts/auth.js"></script>
+
+    <script>
+        // 簽到名單資料集 (初始為空，透過 API loadCheckinData 動態載入)
+        var checkedInData = [];
+        var notCheckedInData = [];
+        var abnormalData = [];
+
+        // 時間轉換：將 "HH:mm" 轉換為當日分鐘數
+        function parseTimeToMinutes(timeStr) {
+            if (!timeStr) return null;
+            var parts = timeStr.trim().split(':');
+            if (parts.length < 2) return null;
+            return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+        }
+
+        // 調度時間區間解析："10:00~12:00" -> { start: 600, end: 720 }
+        function parseDispatchRange(rangeStr) {
+            if (!rangeStr) return null;
+            var parts = rangeStr.split('~');
+            if (parts.length !== 2) return null;
+            var start = parseTimeToMinutes(parts[0]);
+            var end = parseTimeToMinutes(parts[1]);
+            if (start === null || end === null) return null;
+            return { start: start, end: end };
+        }
+
+        // 取得當前時間字串 "HH:mm"
+        function getCurrentTimeStr() {
+            var now = new Date();
+            var hours = String(now.getHours()).padStart(2, '0');
+            var minutes = String(now.getMinutes()).padStart(2, '0');
+            return hours + ':' + minutes;
+        }
+
+        // 取得今天日期字串 "YYYY-MM-DD"
+        function getTodayDateStr() {
+            var today = new Date();
+            var yyyy = today.getFullYear();
+            var mm = String(today.getMonth() + 1).padStart(2, '0');
+            var dd = String(today.getDate()).padStart(2, '0');
+            return yyyy + '-' + mm + '-' + dd;
+        }
+
+        // 檢測待簽到人員是否已超過調度結束時間 (已逾期)
+        function isNotCheckedInExpired(dispatchTime, currentTimeStr) {
+            var range = parseDispatchRange(dispatchTime);
+            var currentMin = parseTimeToMinutes(currentTimeStr);
+            if (!range || currentMin === null) return false;
+            return currentMin > range.end;
+        }
+
+        // 檢核日期是否小於今天 (歷史單據)
+        function isDatePast(dateStr) {
+            if (!dateStr) return false;
+            return dateStr < getTodayDateStr();
+        }
+
+        // 檢核日期是否為今天 (當日單據)
+        function isDateToday(dateStr) {
+            if (!dateStr) return true;
+            return dateStr === getTodayDateStr();
+        }
+
+        // HTML 特殊字元跳脫防護 (XSS 防護)
+        function escapeHtml(str) {
+            if (str == null) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        // 多層級複合排序比較器：
+        // 1. 調度時間 (升冪 ASC)
+        // 2. 來源廠 (升冪 ASC)
+        // 3. 工號 (升冪 ASC)
+        // 4. 狀態 (代碼權重 ASC: 0:待簽到 -> 1:已簽到 -> 2:逾期簽到 -> 3:異常 -> 4:已逾期)
+        function checkinComparator(a, b) {
+            // 1. 調度時間
+            var timeA = a.dispatchTime || '';
+            var timeB = b.dispatchTime || '';
+            if (timeA !== timeB) {
+                if (!timeA) return 1;
+                if (!timeB) return -1;
+                var timeCmp = timeA.localeCompare(timeB);
+                if (timeCmp !== 0) return timeCmp;
+            }
+
+            // 2. 來源廠 (升冪 ASC, 中文筆畫/拼音)
+            var deptA = a.dept || '';
+            var deptB = b.dept || '';
+            var deptCmp = deptA.localeCompare(deptB, 'zh-Hant');
+            if (deptCmp !== 0) return deptCmp;
+
+            // 3. 工號 (升冪 ASC)
+            var idA = a.id || '';
+            var idB = b.id || '';
+            var idCmp = idA.localeCompare(idB);
+            if (idCmp !== 0) return idCmp;
+
+            // 4. 狀態代碼權重
+            var statusWeight = { '0': 0, '1': 1, '2': 2, '3': 3, '4': 4, '待簽到': 0, '已簽到': 1, '逾期簽到': 2, '異常': 3, '已逾期': 4 };
+            var stA = statusWeight[String(a.status)] !== undefined ? statusWeight[String(a.status)] : 99;
+            var stB = statusWeight[String(b.status)] !== undefined ? statusWeight[String(b.status)] : 99;
+            return stA - stB;
+        }
+
+        // 對列表資料套用排序
+        function sortCheckinList(list) {
+            if (Array.isArray(list)) {
+                list.sort(checkinComparator);
+            }
+            return list;
+        }
+
+        // 調度時間 Formatter
+        function dispatchTimeFormatter(value) {
+            if (value) {
+                return '<span class="fw-medium text-dark">' + value + '</span>';
+            }
+            return '<span class="text-muted">-</span>';
+        }
+
+        // 簽到狀態 Formatter:
+        // 0: 待簽到, 1: 已簽到, 2: 逾期簽到, 3: 異常, 4: 已逾期
+        function statusFormatter(value, row) {
+            var st = String(value);
+
+            // 若為待簽到狀態，動態檢核歷史日期或當天是否已超過調度結束時間
+            if (st === '0' || st === '待簽到' || st === '待移轉' || st === '移轉中') {
+                var currentUrlParams = window.currentCheckinParams || {};
+                var dispatchDate = currentUrlParams.dispatchDate;
+                if (isDatePast(dispatchDate)) {
+                    return '<span class="badge bg-danger px-3 py-2"><i class="bi bi-x-circle me-1"></i>已逾期</span>';
+                }
+                if (isDateToday(dispatchDate)) {
+                    var nowStr = getCurrentTimeStr();
+                    if (isNotCheckedInExpired(row.dispatchTime, nowStr)) {
+                        return '<span class="badge bg-danger px-3 py-2"><i class="bi bi-x-circle me-1"></i>已逾期</span>';
+                    }
+                }
+                return '<span class="badge bg-secondary px-3 py-2"><i class="bi bi-hourglass-split me-1"></i>待簽到</span>';
+            }
+
+            switch (st) {
+                case '1':
+                case '已簽到':
+                case 'Y':
+                    return '<span class="badge bg-success px-3 py-2"><i class="bi bi-check-lg me-1"></i>已簽到</span>';
+                case '2':
+                case '逾期簽到':
+                    return '<span class="badge bg-warning text-dark px-3 py-2"><i class="bi bi-clock-history me-1"></i>逾期簽到</span>';
+                case '3':
+                case '異常':
+                case '異常退回':
+                    return '<span class="badge bg-warning text-dark px-3 py-2"><i class="bi bi-exclamation-triangle-fill me-1"></i>異常</span>';
+                case '4':
+                case '已逾期':
+                    return '<span class="badge bg-danger px-3 py-2"><i class="bi bi-x-circle me-1"></i>已逾期</span>';
+                case 'M':
+                case '主管代簽':
+                    return '<span class="badge bg-info text-dark px-3 py-2"><i class="bi bi-person-badge me-1"></i>主管代簽</span>';
+                default:
+                    return value || '';
+            }
+        }
+
+        // 待簽到操作列 Formatter (主管代簽 / 異常標記 按鈕)
+        function managerActionFormatter(value, row) {
+            var detailId = row.detailId || row.id;
+            return '<div class="d-flex justify-content-center gap-2">' +
+                '<button class="btn btn-outline-primary btn-sm text-nowrap fw-semibold" onclick="managerCheckIn(\'' + detailId + '\')">' +
+                '<i class="bi bi-person-check-fill me-1"></i>主管代簽</button>' +
+                '<button class="btn btn-outline-danger btn-sm text-nowrap fw-semibold" onclick="markAbnormal(\'' + detailId + '\')">' +
+                '<i class="bi bi-exclamation-octagon me-1"></i>異常標記</button>' +
+                '</div>';
+        }
+
+        // 異常說明 Formatter (純單行文字輸入欄位，未填寫時呈現紅框)
+        function abnormalReasonFormatter(value, row, index) {
+            var reasonText = row.reasonText || row.reason || '';
+            var detailId = row.detailId || row.id;
+            var isInvalid = !reasonText || !reasonText.trim();
+            var invalidClass = isInvalid ? ' is-invalid border-danger' : '';
+            return '<div class="mx-auto" style="max-width: 380px;">' +
+                '<input type="text" class="form-control form-control-sm abnormal-reason-input' + invalidClass + '" ' +
+                'data-detail-id="' + escapeHtml(detailId) + '" ' +
+                'placeholder="請輸入異常說明" value="' + escapeHtml(reasonText) + '" ' +
+                'oninput="onReasonTextInput(this, \'' + detailId + '\')">' +
+                '</div>';
+        }
+
+        // 異常說明文字輸入事件 (動態增刪紅框)
+        function onReasonTextInput(inputEl, detailId) {
+            var item = abnormalData.find(function (d) { 
+                return String(d.detailId) === String(detailId) || d.id === detailId; 
+            });
+            var val = $(inputEl).val();
+            if (item) {
+                item.reasonText = val;
+                item.reason = val;
+            }
+            if (!val || !val.trim()) {
+                $(inputEl).addClass('is-invalid border-danger');
+            } else {
+                $(inputEl).removeClass('is-invalid border-danger');
+            }
+        }
+
+        // 異常標記操作列 Formatter (保留復原按鈕)
+        function abnormalActionFormatter(value, row, index) {
+            var detailId = row.detailId || row.id;
+            return '<div class="d-flex justify-content-center">' +
+                '<button class="btn btn-outline-secondary btn-sm px-3 py-1 text-nowrap fw-semibold" title="復原為待簽到" onclick="restoreAbnormal(\'' + detailId + '\')">' +
+                '<i class="bi bi-arrow-counterclockwise me-1"></i>復原</button>' +
+                '</div>';
+        }
+
+        // 動態更新卡片標頭計數
+        function updateCounters() {
+            $('#checked-in-count').text(checkedInData.length);
+            $('#not-checked-in-count').text(notCheckedInData.length);
+            $('#abnormal-count').text(abnormalData.length);
+        }
+
+        // 即時掃描結果回饋顯示
+        function showScanResult(type, message, alertClass) {
+            var $area = $('#scanResultArea');
+            var iconClass = 'bi-info-circle-fill text-info';
+
+            if (alertClass === 'alert-success') {
+                iconClass = 'bi-check-circle-fill text-success';
+            } else if (alertClass === 'alert-warning') {
+                iconClass = 'bi-clock-history text-warning';
+            } else if (alertClass === 'alert-danger') {
+                iconClass = 'bi-x-circle-fill text-danger';
+            } else if (alertClass === 'alert-info') {
+                iconClass = 'bi-info-circle-fill text-info';
+            }
+
+            $area.removeClass('alert-light alert-success alert-warning alert-danger alert-info')
+                .addClass(alertClass);
+
+            var parts = String(message).split('<br>');
+            var innerHtml = '';
+            if (parts.length >= 3) {
+                innerHtml = '<div class="d-flex flex-column text-start lh-sm">' +
+                    '<span class="fw-bold fs-6 mb-1">' + escapeHtml(parts[0]) + '</span>' +
+                    '<span class="fw-bold text-dark" style="font-size: 1.05rem;">' + escapeHtml(parts[1]) + '</span>' +
+                    '<span class="fw-semibold" style="font-size: 0.95rem;">' + escapeHtml(parts[2]) + '</span>' +
+                    '</div>';
+            } else if (parts.length === 2) {
+                innerHtml = '<div class="d-flex flex-column text-start lh-sm">' +
+                    '<span class="fw-bold fs-6 mb-1">' + escapeHtml(parts[0]) + '</span>' +
+                    '<span class="fw-semibold text-dark" style="font-size: 1rem;">' + escapeHtml(parts[1]) + '</span>' +
+                    '</div>';
+            } else {
+                innerHtml = '<div class="fw-bold text-start lh-sm fs-6">' + escapeHtml(message) + '</div>';
+            }
+
+            $area.html('<i class="bi ' + iconClass + ' fs-2 me-3 flex-shrink-0"></i>' + innerHtml);
+            $area.hide().fadeIn(180);
+        }
+
+        // 顯示浮動 Toast 訊息
+        function showToastMessage(msg, type) {
+            var $toast = $('#actionToast');
+            $('#toastMessage').text(msg);
+            $toast.removeClass('text-bg-success text-bg-warning text-bg-danger text-bg-primary')
+                .addClass('text-bg-' + (type || 'success'));
+            var toast = new bootstrap.Toast($toast[0], { delay: 2500 });
+            toast.show();
+        }
+
+        // 儲存所有異常原因總按鈕事件
+        async function saveAllAbnormal() {
+            var hasEmpty = false;
+            var firstEmptyInput = null;
+
+            // 同步將表格內所有 input 的最新內容更新至記憶體模型，並檢核是否為空
+            $('#abnormal-table .abnormal-reason-input').each(function () {
+                var $input = $(this);
+                var detailId = $input.attr('data-detail-id');
+                var val = $input.val();
+                var item = abnormalData.find(function (d) {
+                    return String(d.detailId) === String(detailId) || d.id === detailId;
+                });
+                if (item) {
+                    item.reasonText = val;
+                    item.reason = val;
+                }
+
+                if (!val || !val.trim()) {
+                    $input.addClass('is-invalid border-danger');
+                    hasEmpty = true;
+                    if (!firstEmptyInput) {
+                        firstEmptyInput = $input;
+                    }
+                } else {
+                    $input.removeClass('is-invalid border-danger');
+                }
+            });
+
+            if (hasEmpty) {
+                showToastMessage('請填寫所有人員的異常原因後再進行儲存！', 'danger');
+                if (firstEmptyInput) {
+                    firstEmptyInput.focus();
+                }
+                return;
+            }
+
+            var items = abnormalData
+                .filter(function (d) { return d.detailId != null; })
+                .map(function (d) {
+                    return {
+                        detailId: d.detailId,
+                        reason: d.reasonText || d.reason || ''
+                    };
+                });
+
+            if (items.length === 0) {
+                showToastMessage('無需要儲存之項目', 'warning');
+                $('#barcodeInput').focus();
+                return;
+            }
+
+            try {
+                var res = await Auth.authFetch('/api/checkin/abnormal-reasons', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items: items })
+                });
+
+                var data = null;
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    data = { success: false, message: '伺服器回應格式錯誤' };
+                }
+
+                if (res.ok && data && data.success) {
+                    showToastMessage(data.message || '已成功儲存所有異常原因記錄！', 'success');
+                    var currentParams = window.currentCheckinParams || parseCheckinUrlParams();
+                    await loadCheckinData(currentParams.deptId, currentParams.dispatchDate);
+                } else {
+                    showToastMessage((data && data.message) ? data.message : '儲存異常原因失敗', 'danger');
+                }
+            } catch (err) {
+                console.error('[Checkin] 儲存異常原因失敗:', err);
+                showToastMessage('儲存異常原因發生錯誤: ' + err.message, 'danger');
+            } finally {
+                $('#barcodeInput').focus();
+            }
+        }
+
+        // 主管代簽事件處理
+        async function managerCheckIn(detailId) {
+            if (!detailId) return;
+
+            var currentParams = window.currentCheckinParams || parseCheckinUrlParams();
+            var targetEmp = notCheckedInData.find(function (d) {
+                return String(d.detailId) === String(detailId) || d.id === detailId;
+            });
+
+            // 1. 嚴格鎖定：必須在當天調度時間
+            if (!isDateToday(currentParams.dispatchDate)) {
+                var empInfo = targetEmp ? (targetEmp.id + ' ' + targetEmp.name) : detailId;
+                showScanResult('TIME_ERROR', '非簽到時間<br>' + empInfo + '<br>非當日調度時間，不可進行主管代簽', 'alert-danger');
+                showToastMessage('非當日調度時間，不可進行主管代簽', 'danger');
+                $('#barcodeInput').focus();
+                return;
+            }
+
+            // 2. 嚴格鎖定：必須在調度時間內 (時段開始後 ~ 結束前，無提早緩衝)
+            if (targetEmp) {
+                var range = parseDispatchRange(targetEmp.dispatchTime);
+                var nowMinutes = parseTimeToMinutes(getCurrentTimeStr());
+                if (range && nowMinutes !== null && (nowMinutes < range.start || nowMinutes > range.end)) {
+                    showScanResult('TIME_ERROR', '非簽到時間<br>' + targetEmp.id + ' ' + targetEmp.name + '<br>應於調度時間內進行代簽（調度時段: ' + targetEmp.dispatchTime + '）', 'alert-danger');
+                    showToastMessage('非調度時間內，不可進行主管代簽', 'danger');
+                    $('#barcodeInput').focus();
+                    return;
+                }
+            }
+
+            try {
+                var res = await Auth.authFetch('/api/checkin/manager', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        detailId: detailId,
+                        deptId: currentParams.deptId,
+                        dispatchDate: currentParams.dispatchDate
+                    })
+                });
+
+                var data = null;
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    data = { success: false, message: '伺服器回應格式錯誤' };
+                }
+
+                if (res.ok && data && data.success) {
+                    var alertClass = (data.status === 1 || data.status === '1') ? 'alert-success' : 'alert-warning';
+                    showScanResult(data.status === 1 ? 'SUCCESS_ON_TIME' : 'SUCCESS_LATE', data.message, alertClass);
+                    showToastMessage(data.status === 1 ? '已成功主管代簽' : '已完成逾期主管代簽', 'success');
+                    var currentParams = window.currentCheckinParams || parseCheckinUrlParams();
+                    await loadCheckinData(currentParams.deptId, currentParams.dispatchDate);
+                } else {
+                    var errMsg = (data && data.message) ? data.message : ('主管代簽失敗 (HTTP ' + res.status + ')');
+                    var errType = (data && data.type) ? data.type : 'ERROR';
+                    showScanResult(errType, errMsg, 'alert-danger');
+                    showToastMessage(errMsg.replace(/<br>/g, ' '), 'danger');
+                }
+            } catch (err) {
+                console.error('[Checkin] 主管代簽異常:', err);
+                showScanResult('ERROR', '主管代簽失敗: ' + err.message, 'alert-danger');
+            } finally {
+                $('#barcodeInput').focus();
+            }
+        }
+
+        // 標記異常事件處理
+        async function markAbnormal(detailId) {
+            if (!detailId) return;
+
+            try {
+                var res = await Auth.authFetch('/api/checkin/abnormal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ detailId: detailId, action: 'MARK' })
+                });
+
+                var data = null;
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    data = { success: false, message: '伺服器回應格式錯誤' };
+                }
+
+                if (res.ok && data && data.success) {
+                    showScanResult('INFO', data.message || '已標記異常並移至異常標記清單', 'alert-info');
+                    showToastMessage(data.message || '已標記異常', 'warning');
+                    var currentParams = window.currentCheckinParams || parseCheckinUrlParams();
+                    await loadCheckinData(currentParams.deptId, currentParams.dispatchDate);
+                } else {
+                    var errMsg = (data && data.message) ? data.message : ('標記異常失敗 (HTTP ' + res.status + ')');
+                    showScanResult('ERROR', errMsg, 'alert-danger');
+                }
+            } catch (err) {
+                console.error('[Checkin] 標記異常失敗:', err);
+                showScanResult('ERROR', '標記異常失敗: ' + err.message, 'alert-danger');
+            } finally {
+                $('#barcodeInput').focus();
+            }
+        }
+
+        // 復原異常事件處理 (放回待簽到)
+        async function restoreAbnormal(detailId) {
+            if (!detailId) return;
+
+            try {
+                var res = await Auth.authFetch('/api/checkin/abnormal', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ detailId: detailId, action: 'RESTORE' })
+                });
+
+                var data = null;
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    data = { success: false, message: '伺服器回應格式錯誤' };
+                }
+
+                if (res.ok && data && data.success) {
+                    showScanResult('INFO', data.message || '已復原狀態為待簽到', 'alert-info');
+                    showToastMessage(data.message || '已復原狀態為待簽到', 'success');
+                    var currentParams = window.currentCheckinParams || parseCheckinUrlParams();
+                    await loadCheckinData(currentParams.deptId, currentParams.dispatchDate);
+                } else {
+                    var errMsg = (data && data.message) ? data.message : ('復原異常失敗 (HTTP ' + res.status + ')');
+                    showScanResult('ERROR', errMsg, 'alert-danger');
+                }
+            } catch (err) {
+                console.error('[Checkin] 復原異常失敗:', err);
+                showScanResult('ERROR', '復原異常失敗: ' + err.message, 'alert-danger');
+            } finally {
+                $('#barcodeInput').focus();
+            }
+        }
+
+        // 條碼槍/手動輸入工號簽到核心處理函式
+        async function handleScanSubmit() {
+            var val = $('#barcodeInput').val().trim();
+            if (!val) {
+                return;
+            }
+
+            var currentParams = window.currentCheckinParams || parseCheckinUrlParams();
+            var valUpper = val.toUpperCase();
+
+            var isEmpMatch = function (e) {
+                return (e.id && e.id.toUpperCase() === valUpper) || (e.name && e.name === val);
+            };
+
+            // 1. 查找該同仁在當日調度名單中的所有明細 (包含待簽到、已簽到、異常)
+            var empNotChecked = notCheckedInData.filter(isEmpMatch);
+            var empChecked = checkedInData.filter(isEmpMatch);
+            var empAbnormal = abnormalData.filter(isEmpMatch);
+            var allEmpRecords = empNotChecked.concat(empChecked, empAbnormal);
+
+            if (allEmpRecords.length === 0) {
+                showScanResult('NOT_FOUND', '發生錯誤<br>工號 ' + val + '<br>未於調度名單中', 'alert-danger');
+                $('#barcodeInput').val('').focus();
+                return;
+            }
+
+            var empName = allEmpRecords[0].name;
+
+            // 2. 嚴格校驗：必須為當日調度時間
+            if (!isDateToday(currentParams.dispatchDate)) {
+                showScanResult('TIME_ERROR', '非簽到時間<br>' + val + ' ' + empName + '<br>非當日調度時間，不可簽到（調度日期: ' + currentParams.dispatchDate + '）', 'alert-danger');
+                $('#barcodeInput').val('').focus();
+                return;
+            }
+
+            // 3. 取得當前時間並進行嚴格時段比對 (開始後 ~ 結束前，無提早緩衝)
+            var nowMinutes = parseTimeToMinutes(getCurrentTimeStr());
+            var isSlotActive = function (e) {
+                var range = parseDispatchRange(e.dispatchTime);
+                return range && nowMinutes >= range.start && nowMinutes <= range.end;
+            };
+
+            // 篩選當下時間落在有效窗口的時段明細
+            var activeNotChecked = empNotChecked.filter(isSlotActive);
+            var activeChecked = empChecked.filter(isSlotActive);
+            var activeAbnormal = empAbnormal.filter(isSlotActive);
+            var activeTotalCount = activeNotChecked.length + activeChecked.length + activeAbnormal.length;
+
+            // 若當前時間未落在該同仁的任何調度時段內
+            if (activeTotalCount === 0) {
+                var slotListStr = allEmpRecords.map(function (e) { return e.dispatchTime; }).filter(Boolean).join(', ');
+                showScanResult('TIME_ERROR', '非簽到時間<br>' + val + ' ' + empName + '<br>應於調度時間內簽到（今日時段: ' + slotListStr + '）', 'alert-danger');
+                $('#barcodeInput').val('').focus();
+                return;
+            }
+
+            // 4. 當前時段嚴格比對：
+            // 若當前時段尚有未簽到明細，放行呼叫後端 API 執行簽到；
+            // 若當前時段無未簽到明細，則依當前時段狀態回傳已略過重複或異常
+            if (activeNotChecked.length === 0) {
+                if (activeAbnormal.length > 0) {
+                    showScanResult('ABNORMAL_RECORD', '發生錯誤<br>' + val + ' ' + empName + '<br>今日調度明細已標記異常', 'alert-danger');
+                    $('#barcodeInput').val('').focus();
+                    return;
+                }
+                if (activeChecked.length > 0) {
+                    showScanResult('DUPLICATE', '重複掃描<br>' + val + ' ' + empName + '<br>已略過', 'alert-info');
+                    $('#barcodeInput').val('').focus();
+                    return;
+                }
+            }
+
+            try {
+                var res = await Auth.authFetch('/api/checkin/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        deptId: currentParams.deptId,
+                        dispatchDate: currentParams.dispatchDate,
+                        empId: val
+                    })
+                });
+
+                var data = null;
+                try {
+                    data = await res.json();
+                } catch (e) {
+                    data = { success: false, message: '伺服器回應格式錯誤' };
+                }
+
+                if (res.ok && data && data.success) {
+                    var alertClass = (data.status === 1 || data.status === '1') ? 'alert-success' : 'alert-warning';
+                    showScanResult(data.type || 'SUCCESS', data.message, alertClass);
+                    await loadCheckinData(currentParams.deptId, currentParams.dispatchDate);
+                } else {
+                    var errMsg = (data && data.message) ? data.message : ('發生錯誤 (HTTP ' + res.status + ')');
+                    var errType = (data && data.type) ? data.type : 'ERROR';
+                    var alertClass = (errType === 'DUPLICATE') ? 'alert-info' : 'alert-danger';
+                    showScanResult(errType, errMsg, alertClass);
+                }
+            } catch (err) {
+                console.error('[Checkin] 簽到發生異常:', err);
+                showScanResult('ERROR', '發生錯誤<br>' + val + '<br>連線失敗: ' + err.message, 'alert-danger');
+            } finally {
+                $('#barcodeInput').val('').focus();
+            }
+        }
+
+        // API 載入簽到清單並分流至三表格
+        async function loadCheckinData(deptId, dispatchDate) {
+            if (!deptId || !dispatchDate) {
+                var params = parseCheckinUrlParams();
+                deptId = deptId || params.deptId;
+                dispatchDate = dispatchDate || params.dispatchDate;
+            }
+            window.currentCheckinParams = { deptId: deptId, dispatchDate: dispatchDate };
+
+            try {
+                if (!window.Auth) {
+                    console.warn('[Checkin] Auth module not available');
+                    return;
+                }
+                var res = await Auth.authFetch('/api/checkin/records?deptId=' + encodeURIComponent(deptId) + '&dispatchDate=' + encodeURIComponent(dispatchDate));
+                if (!res.ok) {
+                    console.error('[Checkin] 載入簽到清單失敗 HTTP ' + res.status);
+                    return;
+                }
+                var resData = await res.json();
+                if (!resData || !resData.success) {
+                    console.error('[Checkin] API 回傳錯誤:', resData);
+                    return;
+                }
+
+                // 更新頂部資訊
+                updateHeaderInfo(deptId, resData.deptName, dispatchDate);
+
+                var rawList = Array.isArray(resData.data) ? resData.data : [];
+
+                // 清空並重構三類名單
+                checkedInData = [];
+                notCheckedInData = [];
+                abnormalData = [];
+
+                rawList.forEach(function (item) {
+                    var record = {
+                        detailId: item.detailId || item.DetailId || null,
+                        id: item.id || item.EmpId || '',
+                        name: item.name || item.EmpName || '',
+                        dept: item.dept || item.sourceDeptName || item.SourceDeptName || '',
+                        dispatchTime: item.dispatchTime || ((item.startTime && item.endTime) ? (item.startTime + '~' + item.endTime) : ''),
+                        startTime: item.startTime || '',
+                        endTime: item.endTime || '',
+                        time: item.time || item.CheckInTime || '',
+                        status: String(item.status !== undefined ? item.status : '0'),
+                        reasonText: item.reasonText || item.AbnormalReason || ''
+                    };
+
+                    var st = record.status;
+                    if (st === '1' || st === '2' || st === '已簽到' || st === '逾期簽到') {
+                        checkedInData.push(record);
+                    } else if (st === '3' || st === '異常') {
+                        abnormalData.push(record);
+                    } else {
+                        notCheckedInData.push(record);
+                    }
+                });
+
+                // 多層級排序
+                sortCheckinList(checkedInData);
+                sortCheckinList(notCheckedInData);
+                sortCheckinList(abnormalData);
+
+                // 更新 Bootstrap Tables
+                $('#checked-in-table').bootstrapTable('load', checkedInData);
+                $('#not-checked-in-table').bootstrapTable('load', notCheckedInData);
+                $('#abnormal-table').bootstrapTable('load', abnormalData);
+
+                // 更新計數
+                updateCounters();
+            } catch (err) {
+                console.error('[Checkin] 載入資料發生異常:', err);
+            } finally {
+                $('#barcodeInput').focus();
+            }
+        }
+
+        // URL 參數相容解析器 (支援 && 與 YYYYMMDD 格式)
+        function parseCheckinUrlParams() {
+            var rawSearch = window.location.search || '';
+            if (rawSearch.startsWith('?')) {
+                rawSearch = rawSearch.substring(1);
+            }
+            // 容錯處理連續的 &&
+            var cleanSearch = rawSearch.replace(/&&+/g, '&');
+            var params = new URLSearchParams(cleanSearch);
+
+            var deptId = params.get('deptId') || params.get('DeptId') || '';
+            var rawDate = params.get('DispatchDate') || params.get('dispatchDate') || '';
+            var dispatchDate = '';
+
+            // 正規化日期
+            if (rawDate) {
+                rawDate = rawDate.trim();
+                if (/^\d{8}$/.test(rawDate)) {
+                    dispatchDate = rawDate.substring(0, 4) + '-' + rawDate.substring(4, 6) + '-' + rawDate.substring(6, 8);
+                } else if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+                    dispatchDate = rawDate;
+                } else if (/^\d{4}\/\d{2}\/\d{2}$/.test(rawDate)) {
+                    dispatchDate = rawDate.replace(/\//g, '-');
+                }
+            }
+
+            var user = window.Auth ? Auth.getUser() : null;
+            if (!deptId && user && user.deptId) {
+                deptId = user.deptId;
+            }
+            if (!deptId) {
+                deptId = 'JMB03'; // 預設廠別
+            }
+
+            if (!dispatchDate) {
+                var today = new Date();
+                var yyyy = today.getFullYear();
+                var mm = String(today.getMonth() + 1).padStart(2, '0');
+                var dd = String(today.getDate()).padStart(2, '0');
+                dispatchDate = yyyy + '-' + mm + '-' + dd;
+            }
+
+            window.currentCheckinParams = { deptId: deptId, dispatchDate: dispatchDate };
+            return { deptId: deptId, dispatchDate: dispatchDate };
+        }
+
+        // 更新頂部廠別與日期資訊
+        function updateHeaderInfo(deptId, deptName, dispatchDate) {
+            var displayDate = (dispatchDate || '').replace(/-/g, '/');
+            var displayDept = deptName || deptId || '';
+            $('#pageTitleInfo').html(escapeHtml(displayDate) + ' &nbsp;|&nbsp; ' + escapeHtml(displayDept));
+        }
+
+        window.getTodayDateStr = getTodayDateStr;
+        window.isDatePast = isDatePast;
+        window.isDateToday = isDateToday;
+        window.statusFormatter = statusFormatter;
+        window.loadCheckinData = loadCheckinData;
+        window.handleScanSubmit = handleScanSubmit;
+        window.managerCheckIn = managerCheckIn;
+        window.markAbnormal = markAbnormal;
+        window.restoreAbnormal = restoreAbnormal;
+        window.saveAllAbnormal = saveAllAbnormal;
+        window.parseCheckinUrlParams = parseCheckinUrlParams;
+        window.updateHeaderInfo = updateHeaderInfo;
+
+        $(document).ready(function () {
+            // 身分驗證守衛：若未登入則導向登入頁並中斷執行
+            if (window.Auth && !Auth.requireAuth('login.html')) {
+                return;
+            }
+
+            // 渲染頂部導覽列使用者資訊
+            if (window.Auth) {
+                Auth.renderNavbarUser('#navbarUserArea');
+            }
+
+            // 解析 URL 參數並動態更新頂部標題資訊
+            var currentParams = parseCheckinUrlParams();
+            var currentUser = window.Auth ? Auth.getUser() : null;
+            var initialDeptName = (currentUser && currentUser.deptId === currentParams.deptId) ? (currentUser.deptName || currentUser.deptId) : '';
+            updateHeaderInfo(currentParams.deptId, initialDeptName, currentParams.dispatchDate);
+
+            // 初始資料依序進行多層級排序
+            sortCheckinList(checkedInData);
+            sortCheckinList(notCheckedInData);
+            sortCheckinList(abnormalData);
+
+            // 初始化已簽到表格
+            $('#checked-in-table').bootstrapTable({
+                data: checkedInData,
+                classes: 'table table-borderless table-striped mb-0',
+                columns: [
+                    { field: 'dept', title: '來源廠', align: 'center' },
+                    { field: 'id', title: '工號', align: 'center' },
+                    { field: 'name', title: '姓名', align: 'center' },
+                    { field: 'dispatchTime', title: '調度時間', formatter: dispatchTimeFormatter, align: 'center' },
+                    { field: 'time', title: '簽到時間', align: 'center' },
+                    { field: 'status', title: '狀態', formatter: statusFormatter, align: 'center' }
+                ]
+            });
+
+            // 初始化待簽到表格
+            $('#not-checked-in-table').bootstrapTable({
+                data: notCheckedInData,
+                classes: 'table table-borderless mb-0',
+                columns: [
+                    { field: 'dept', title: '來源廠', align: 'center' },
+                    { field: 'id', title: '工號', align: 'center' },
+                    { field: 'name', title: '姓名', align: 'center' },
+                    { field: 'dispatchTime', title: '調度時間', formatter: dispatchTimeFormatter, align: 'center' },
+                    { field: 'status', title: '狀態', formatter: statusFormatter, align: 'center' },
+                    { field: 'action', title: '操作', formatter: managerActionFormatter, align: 'center' }
+                ]
+            });
+
+            // 初始化異常標記表格 (不包含操作/復原欄位)
+            $('#abnormal-table').bootstrapTable({
+                data: abnormalData,
+                classes: 'table table-borderless table-striped mb-0',
+                columns: [
+                    { field: 'dept', title: '來源廠', align: 'center' },
+                    { field: 'id', title: '工號', align: 'center' },
+                    { field: 'name', title: '姓名', align: 'center' },
+                    { field: 'dispatchTime', title: '調度時間', formatter: dispatchTimeFormatter, align: 'center' },
+                    { field: 'status', title: '狀態', formatter: statusFormatter, align: 'center' },
+                    { field: 'reason', title: '異常說明', formatter: abnormalReasonFormatter, align: 'center' }
+                ]
+            });
+
+            // 初始化計數
+            updateCounters();
+
+            // 從 API 載入最新簽到清單
+            loadCheckinData(currentParams.deptId, currentParams.dispatchDate);
+
+            // 頁面載入後自動聚焦工號輸入框
+            $('#barcodeInput').focus();
+
+            // 輸入框按 Enter 鍵直接觸發簽到 (支援 keydown / keypress 並防呆)
+            $('#barcodeInput').on('keydown', function (e) {
+                if (e.which === 13 || e.key === 'Enter') {
+                    e.preventDefault();
+                    handleScanSubmit();
+                }
+            }).on('keypress', function (e) {
+                if (e.which === 13) {
+                    e.preventDefault();
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

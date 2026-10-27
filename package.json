@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "dayjs": "^1.11.13",
+    "exceljs": "^3.4.0",
+    "express": "^4.19.2",
+    "msnodesqlv8": "^5.2.0",
+    "mssql": "^11.0.1",
+    "multer": "^2.0.2",
+    "nodemon": "^3.1.14",
+    "jsonwebtoken": "^9.0.2",
+    "xlsx": "^0.18.5"
+  },
+  "scripts": {
+    "dev": "nodemon server.js",
+    "production": "nodemon server.js",
+    "init-db": "node scripts/init-db.js",
+    "test:api": "node scripts/verify_dispatch_api.js",
+    "test:client": "node scripts/verify_api_client.js",
+    "test:integration": "node scripts/verify_index_integration.js",
+    "test:report": "node scripts/verify_report_api.js && node scripts/verify_report_page.js",
+    "test": "node scripts/verify_db_schema.js && npm run test:api && npm run test:client && npm run test:integration && npm run test:report"
+  }
+}

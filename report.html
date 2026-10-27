@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>跨廠調派明細報表查詢</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css" rel="stylesheet">
+  <!-- Bootstrap Table CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/bootstrap-table.min.css" rel="stylesheet">
+  <!-- Select2 CSS & Bootstrap 5 Theme -->
+  <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css"
+    rel="stylesheet">
+  <!-- Flatpickr CSS (強制 24 小時制時間選擇器) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <!-- SheetJS (xlsx) 原生 Excel 匯出模組 -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    :root {
+      --primary-color: #0f4c81;
+      --bg-color: #f4f6f9;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
+      color: #333;
+    }
+
+    .card {
+      border: none;
+      border-radius: 0.75rem;
+      box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.06);
+      background-color: #ffffff;
+    }
+
+    .card-header {
+      background-color: #ffffff;
+      border-bottom: 1px solid #edf2f7;
+      font-weight: 600;
+      padding: 1rem 1.25rem;
+      border-top-left-radius: 0.75rem !important;
+      border-top-right-radius: 0.75rem !important;
+    }
+
+    .table th {
+      background-color: #f8fafc;
+      font-weight: 600;
+      color: #475569;
+      white-space: nowrap;
+      padding: 0.85rem 1rem;
+      border-bottom-width: 1px;
+    }
+
+    .bootstrap-table .th-inner {
+      font-weight: 600;
+      color: #475569;
+      padding: 0.85rem 1rem !important;
+    }
+
+    .bootstrap-table .sortable {
+      cursor: pointer;
+    }
+
+    .table td {
+      padding: 0.85rem 1rem;
+      vertical-align: middle;
+    }
+
+    .badge-status {
+      font-size: 0.825rem;
+      padding: 0.4em 0.75em;
+      border-radius: 0.5rem;
+      font-weight: 500;
+    }
+
+    .badge-route-from {
+      font-size: 0.825rem;
+      font-weight: 500;
+      padding: 0.35em 0.6em;
+      border-radius: 0.35rem;
+      background-color: #f1f5f9;
+      color: #334155;
+      border: 1px solid #cbd5e1;
+    }
+
+    .badge-route-to {
+      font-size: 0.825rem;
+      font-weight: 500;
+      padding: 0.35em 0.6em;
+      border-radius: 0.35rem;
+      background-color: #0d6efd;
+      color: #ffffff;
+    }
+
+    .badge-anomaly-note {
+      font-size: 0.825rem;
+      font-weight: normal;
+      background-color: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+      border-radius: 0.375rem;
+      padding: 0.35em 0.65em;
+      display: inline-block;
+      text-align: left;
+      line-height: 1.4;
+    }
+
+    /* TabView 頁籤導覽列樣式 */
+    .navbar-nav-tabs .nav-link {
+      font-weight: 500;
+      font-size: 0.95rem;
+      padding: 0.6rem 1.25rem;
+      color: rgba(255, 255, 255, 0.7);
+      border-radius: 6px 6px 0 0;
+      margin-right: 4px;
+      transition: all 0.2s ease-in-out;
+      border-bottom: 3px solid transparent;
+    }
+
+    .navbar-nav-tabs .nav-link:hover {
+      color: #ffffff;
+      background-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .navbar-nav-tabs .nav-link.active {
+      font-weight: 700;
+      color: #ffffff !important;
+      background-color: rgba(255, 255, 255, 0.12);
+      border-bottom: 3px solid #0d6efd;
+    }
+
+    /* Select2 Bootstrap 5 多選微調 */
+    .select2-container--bootstrap-5 .select2-selection--multiple {
+      min-height: 38px;
+    }
+
+    .select2-container--bootstrap-5 .select2-selection--multiple .select2-selection__choice {
+      font-size: 0.85rem;
+      padding: 2px 6px;
+    }
+
+    /* 確保下拉選單向下展開對齊 */
+    .select2-container--bootstrap-5.select2-container--open .select2-dropdown {
+      border-top: none;
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- 頂部共用導覽列 (Navbar TabView) -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm py-2">
+    <div class="container-fluid px-4">
+      <a class="navbar-brand d-flex align-items-center" href="index.html">
+        <i class="bi bi-arrow-left-right text-primary me-2 fs-5"></i>
+        <span>CPDS 跨廠人員調度與簽到系統</span>
+      </a>
+
+      <!-- 導覽列選單切換按鈕 (RWD 手機版) -->
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMainCollapse"
+        aria-controls="navbarMainCollapse" aria-expanded="false" aria-label="切換選單">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarMainCollapse">
+        <!-- 功能選單項目 (調度 / 簽到 / 報表) -->
+        <ul class="navbar-nav navbar-nav-tabs me-auto ms-lg-4 mb-2 mb-lg-0">
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center" href="index.html">
+              <i class="bi bi-arrow-left-right me-1"></i>調度
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link d-flex align-items-center" href="checkin.html">
+              <i class="bi bi-clipboard-check me-1"></i>簽到
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active d-flex align-items-center" aria-current="page" href="report.html">
+              <i class="bi bi-file-earmark-bar-graph me-1"></i>報表
+            </a>
+          </li>
+        </ul>
+
+        <!-- 使用者身分資訊與登出按鈕注入點 -->
+        <div id="navbarUserArea" class="ms-lg-auto">
+          <!-- 由 scripts/auth.js 動態渲染 -->
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container-fluid px-4 py-4">
+
+    <!-- 多維度條件篩選卡片 -->
+    <div class="card mb-4" id="filterCard">
+      <div class="card-header d-flex align-items-center">
+        <i class="bi bi-funnel-fill text-primary me-2"></i>
+        <span>多維度條件篩選</span>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-xl-2 col-md-4 col-sm-6">
+            <label class="form-label small fw-bold text-secondary">調派日期 (起)</label>
+            <input type="date" class="form-control" id="filterStartDate" onchange="applyReportFilters()">
+          </div>
+          <div class="col-xl-2 col-md-4 col-sm-6">
+            <label class="form-label small fw-bold text-secondary">調派日期 (迄)</label>
+            <input type="date" class="form-control" id="filterEndDate" onchange="applyReportFilters()">
+          </div>
+          <div class="col-xl-2 col-md-4 col-sm-6">
+            <label class="form-label small fw-bold text-secondary">來源廠</label>
+            <select class="form-select" id="filterFromPlant" multiple="multiple" data-placeholder="請選擇來源廠...">
+              <!-- 由 loadDepartments() 動態填入 -->
+            </select>
+          </div>
+          <div class="col-xl-2 col-md-4 col-sm-6">
+            <label class="form-label small fw-bold text-secondary">目的廠</label>
+            <select class="form-select" id="filterToPlant" multiple="multiple" data-placeholder="請選擇目的廠...">
+              <!-- 由 loadDepartments() 動態填入 -->
+            </select>
+          </div>
+          <div class="col-xl-2 col-md-4 col-sm-6">
+            <label class="form-label small fw-bold text-secondary">狀態</label>
+            <select class="form-select" id="filterStatus" multiple="multiple" data-placeholder="請選擇狀態...">
+              <option value="0">待簽到</option>
+              <option value="1">已簽到</option>
+              <option value="2">逾期簽到</option>
+              <option value="4">已逾期</option>
+              <option value="3">異常</option>
+            </select>
+          </div>
+          <div class="col-xl-2 col-md-4 col-sm-6">
+            <label class="form-label small fw-bold text-secondary">調度時間 (起~訖)</label>
+            <div class="input-group">
+              <input type="text" class="form-control text-center timepicker-24hr" id="filterStartTime" placeholder="起 HH:mm">
+              <span class="input-group-text px-1 bg-light">~</span>
+              <input type="text" class="form-control text-center timepicker-24hr" id="filterEndTime" placeholder="訖 HH:mm">
+            </div>
+          </div>
+          <div class="col-xl-2 col-md-4 col-sm-6">
+            <label class="form-label small fw-bold text-secondary">關鍵字搜尋</label>
+            <div class="input-group">
+              <input type="text" class="form-control" id="filterKeyword" placeholder="搜尋工號/姓名/單號..."
+                onkeydown="if(event.key==='Enter'){ applyReportFilters(); }">
+              <button class="btn btn-outline-secondary" type="button" onclick="applyReportFilters()" title="搜尋">
+                <i class="bi bi-search"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 pt-2 d-flex justify-content-between align-items-center border-top">
+          <div class="small text-muted" id="filterResultCount">
+            共查詢到 0 筆資料
+          </div>
+          <div>
+            <button class="btn btn-outline-secondary btn-sm me-2" id="btnResetFilters" onclick="resetFilters()">
+              <i class="bi bi-arrow-repeat me-1"></i>清空條件
+            </button>
+            <button class="btn btn-outline-success btn-sm" id="btnExportExcel" onclick="exportToExcel()">
+              <i class="bi bi-file-earmark-spreadsheet me-1"></i>匯出 Excel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 跨廠調派明細總表卡片 -->
+    <div class="card">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <div class="d-flex align-items-center">
+          <i class="bi bi-table text-primary me-2"></i>
+          <span>跨廠調派明細總表</span>
+        </div>
+        <div class="text-muted small">
+          <span class="me-2"><i class="bi bi-arrow-down-up me-1"></i>支援點擊任意表頭排序</span>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0" id="reportTable">
+            <thead>
+              <tr>
+                <th data-field="dispatchDate" data-sortable="true" data-align="center" data-halign="center"
+                  data-formatter="dispatchDateFormatter" style="min-width: 110px;">調派日期</th>
+                <th data-field="sourceDeptName" data-sortable="true" data-align="center" data-halign="center"
+                  data-formatter="fromPlantFormatter" style="min-width: 100px;">來源廠</th>
+                <th data-field="targetDeptName" data-sortable="true" data-align="center" data-halign="center"
+                  data-formatter="toPlantFormatter" style="min-width: 100px;">目的廠</th>
+                <th data-field="empId" data-sortable="true" data-align="center" data-halign="center"
+                  data-formatter="empIdFormatter" style="min-width: 90px;">工號</th>
+                <th data-field="empName" data-sortable="true" data-align="center" data-halign="center"
+                  data-formatter="empNameFormatter" style="min-width: 90px;">姓名</th>
+                <th data-field="status" data-sortable="true" data-align="center" data-halign="center"
+                  data-sorter="statusSorter" data-formatter="statusFormatter" style="min-width: 100px;">狀態</th>
+                <th data-field="dispatchTimeRange" data-sortable="true" data-align="center" data-halign="center"
+                  data-formatter="timeRangeFormatter" style="min-width: 140px;">調度時間起訖</th>
+                <th data-field="checkinTime" data-sortable="true" data-align="center" data-halign="center"
+                  data-sorter="checkinTimeSorter" data-formatter="checkinTimeFormatter" style="min-width: 100px;">簽到時間
+                </th>
+                <th data-field="receiverName" data-sortable="true" data-align="center" data-halign="center"
+                  data-formatter="receiverNameFormatter" style="min-width: 110px;">確認人</th>
+                <th data-field="anomalyNote" data-sortable="true" data-formatter="anomalyNoteFormatter">異常說明</th>
+              </tr>
+            </thead>
+            <tbody id="reportTableBody">
+              <!-- 由 Bootstrap-Table 動態渲染資料列 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast 訊息通知 -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+    <div id="actionToast" class="toast align-items-center text-white bg-primary border-0 shadow" role="alert"
+      aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body" id="toastMessage">已更新</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- jQuery (Bootstrap-Table 必要依賴) -->
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+  <!-- Select2 JS & 繁體中文語系 -->
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/i18n/zh-TW.js"></script>
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Bootstrap-Table JS & 繁體中文語系 -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/bootstrap-table.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap-table@1.24.1/dist/locale/bootstrap-table-zh-TW.min.js"></script>
+  <!-- Flatpickr JS (強制 24 小時制時間選擇器) -->
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+  <!-- 原生 API Client 與 Auth 守門員模組 -->
+  <script src="scripts/api.js"></script>
+  <script src="scripts/auth.js"></script>
+
+  <script>
+    let toastInstance = null;
+
+    // 格式化日期 (YYYY-MM-DD)
+    function getFormattedDate(daysOffset = 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + daysOffset);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    // 格式化簽到時間為 HH:mm
+    function formatCheckinTime(val) {
+      if (!val) return '-';
+      const str = String(val).trim();
+      if (/^\d{1,2}:\d{2}$/.test(str)) {
+        return str.padStart(5, '0');
+      }
+      const match = str.match(/(\d{2}:\d{2})(?::\d{2})?$/);
+      if (match) return match[1];
+      return str;
+    }
+
+    // 檢查簽到是否逾期：若簽到時間超過調度起始時間 10 分鐘以上才簽到者為「逾期簽到」(status: 2)
+    function isCheckinOverdue(checkinTime, dispatchTimeRange) {
+      if (!checkinTime || !dispatchTimeRange) return false;
+      const rangeParts = dispatchTimeRange.split(/[~-]/);
+      if (rangeParts.length < 2) return false;
+      const startTimeStr = rangeParts[0].trim();
+      const checkinTimeStr = formatCheckinTime(checkinTime);
+
+      const [startH, startM] = startTimeStr.split(':').map(Number);
+      const [checkH, checkM] = checkinTimeStr.split(':').map(Number);
+
+      if (isNaN(startH) || isNaN(startM) || isNaN(checkH) || isNaN(checkM)) return false;
+
+      const startTotalMinutes = startH * 60 + startM;
+      const checkTotalMinutes = checkH * 60 + checkM;
+
+      // 超過調度起始時間 10 分鐘
+      return checkTotalMinutes > (startTotalMinutes + 10);
+    }
+
+    // 檢查未簽到人員是否已逾期：
+    // 為到調度時間結束後未簽到者 (僅前端顯示用，不更動狀態，限當天；但若已經過去的狀態皆顯示已逾期) (status: 4)
+    function isNotCheckedInOverdue(dispatchDate, dispatchTimeRange) {
+      if (!dispatchDate) return false;
+      const todayStr = getFormattedDate(0);
+      const formattedDate = dispatchDate.replace(/\//g, '-');
+
+      // 1. 若調派日期為過去日期，未簽到者一律顯示已逾期
+      if (formattedDate < todayStr) {
+        return true;
+      }
+
+      // 2. 若調派日期為未來日期，尚未逾期
+      if (formattedDate > todayStr) {
+        return false;
+      }
+
+      // 3. 若為當天，檢查當前時間是否已超過調度結束時間 (EndTime)
+      if (!dispatchTimeRange) return false;
+      const rangeParts = dispatchTimeRange.split(/[~-]/);
+      if (rangeParts.length < 2) return false;
+      const endTimeStr = rangeParts[1].trim();
+      const endDateTime = new Date(`${formattedDate}T${endTimeStr}:00`);
+      if (isNaN(endDateTime.getTime())) return false;
+
+      const now = new Date();
+      return now > endDateTime;
+    }
+
+    // 計算紀錄之即時狀態：
+    // - 3: 異常 (手動標記為異常者)
+    // - 1: 已簽到 (為到調度時間開始的前10分鐘內簽到者)
+    // - 2: 逾期簽到 (為到調度時間開始超過10分鐘後才簽到者)
+    // - 4: 已逾期 (為到調度時間結束後未簽到者，僅前端顯示用，限當天；但若已經過去的狀態皆顯示已逾期)
+    // - 0: 待簽到 (為到調度時間結束前尚未簽到者)
+    function resolveRecordStatus(record) {
+      if (String(record.status) === '3' || String(record.status) === 'Anomaly' || record.status === '異常' || record.anomalyNote) {
+        return '3'; // 異常狀態維持不變
+      }
+      if (record.checkinTime && record.dispatchTimeRange) {
+        if (isCheckinOverdue(record.checkinTime, record.dispatchTimeRange)) {
+          return '2'; // 逾期簽到 (超過起始時間 10 分鐘以上才簽到者)
+        }
+        return '1'; // 已簽到 (準時簽到)
+      }
+      if (isNotCheckedInOverdue(record.dispatchDate, record.dispatchTimeRange)) {
+        return '4'; // 已逾期 (到調度時間結束後未簽到者)
+      }
+      return '0'; // 待簽到
+    }
+
+    function showToast(message, isError = false) {
+      const toastEl = document.getElementById('actionToast');
+      const toastMsg = document.getElementById('toastMessage');
+      toastEl.className = `toast align-items-center text-white border-0 shadow ${isError ? 'bg-danger' : 'bg-primary'}`;
+      toastMsg.innerText = message;
+      if (!toastInstance) {
+        toastInstance = new bootstrap.Toast(toastEl, { delay: 3000 });
+      }
+      toastInstance.show();
+    }
+
+    // 狀態徽章樣式: 0:待簽到, 1:已簽到, 2:逾期簽到, 4:已逾期, 3:異常
+    function getStatusBadge(status) {
+      switch (String(status)) {
+        case '0':
+        case 'Pending':
+        case '待簽到':
+          return '<span class="badge bg-secondary badge-status"><i class="bi bi-hourglass-split me-1"></i>待簽到</span>';
+        case '1':
+        case 'Received':
+        case '已簽到':
+          return '<span class="badge bg-success badge-status"><i class="bi bi-check-circle me-1"></i>已簽到</span>';
+        case '2':
+        case 'LateCheckin':
+        case '逾期簽到':
+          return '<span class="badge bg-warning text-dark badge-status"><i class="bi bi-clock-history me-1"></i>逾期簽到</span>';
+        case '3':
+        case 'Anomaly':
+        case '異常':
+          return '<span class="badge bg-warning text-dark badge-status"><i class="bi bi-exclamation-triangle-fill me-1"></i>異常</span>';
+        case '4':
+        case 'Expired':
+        case '已逾期':
+          return '<span class="badge bg-danger badge-status"><i class="bi bi-x-circle me-1"></i>已逾期</span>';
+        default:
+          return `<span class="badge bg-secondary badge-status">${status}</span>`;
+      }
+    }
+
+    // Bootstrap-Table 欄位自訂格式化 (Formatters) 與排序器 (Sorters)
+    window.dispatchDateFormatter = function (value) {
+      return `<span class="fw-bold">${value || '-'}</span>`;
+    };
+
+    window.fromPlantFormatter = function (value, row) {
+      const val = row.sourceDeptName || row.fromPlant || value || '-';
+      return `<span class="badge-route-from">${val}</span>`;
+    };
+
+    window.toPlantFormatter = function (value, row) {
+      const val = row.targetDeptName || row.toPlant || value || '-';
+      return `<span class="badge-route-to">${val}</span>`;
+    };
+
+    window.empIdFormatter = function (value) {
+      return `<span class="font-monospace text-secondary">${value || '-'}</span>`;
+    };
+
+    window.empNameFormatter = function (value) {
+      return `<span class="fw-bold">${value || '-'}</span>`;
+    };
+
+    window.statusFormatter = function (value, row) {
+      const currentStatus = resolveRecordStatus(row);
+      return getStatusBadge(currentStatus);
+    };
+
+    window.statusSorter = function (a, b) {
+      const order = {
+        '0': 0, '1': 1, '2': 2, '4': 3, '3': 4,
+        'Pending': 0, 'Received': 1, 'LateCheckin': 2, '逾期簽到': 2,
+        'Expired': 3, '已逾期': 3, 'Anomaly': 4, '異常': 4
+      };
+      const valA = order[String(a)] ?? 99;
+      const valB = order[String(b)] ?? 99;
+      return valA - valB;
+    };
+
+    window.timeRangeFormatter = function (value) {
+      return `<span class="font-monospace text-secondary small">${value || '-'}</span>`;
+    };
+
+    window.checkinTimeFormatter = function (value) {
+      return `<span class="font-monospace text-secondary small">${formatCheckinTime(value)}</span>`;
+    };
+
+    window.checkinTimeSorter = function (a, b) {
+      if (!a && !b) return 0;
+      if (!a) return 1;
+      if (!b) return -1;
+      return String(a).localeCompare(String(b));
+    };
+
+    window.receiverNameFormatter = function (value) {
+      return `<span class="small">${value || '-'}</span>`;
+    };
+
+    window.anomalyNoteFormatter = function (value) {
+      return value
+        ? `<span class="badge-anomaly-note">${value}</span>`
+        : '<span class="text-muted">-</span>';
+    };
+
+    // 多層級複合排序比較器：
+    // 1. 調度日期 (降冪 DESC: 由新到舊)
+    // 2. 來源廠 (升冪 ASC)
+    // 3. 目的廠 (升冪 ASC)
+    // 4. 狀態 (升冪 ASC: 0:待簽到 -> 1:已簽到 -> 2:逾期簽到 -> 4:已逾期 -> 3:異常) (排除工號排序)
+    function multiColumnComparator(a, b) {
+      // 1. 調派日期 (降冪 DESC)
+      const dateA = a.dispatchDate || '';
+      const dateB = b.dispatchDate || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+
+      // 2. 來源廠 (升冪 ASC)
+      const fromA = a.sourceDeptName || a.fromPlant || '';
+      const fromB = b.sourceDeptName || b.fromPlant || '';
+      const fromCmp = fromA.localeCompare(fromB, 'zh-Hant');
+      if (fromCmp !== 0) {
+        return fromCmp;
+      }
+
+      // 3. 目的廠 (升冪 ASC)
+      const toA = a.targetDeptName || a.toPlant || '';
+      const toB = b.targetDeptName || b.toPlant || '';
+      const toCmp = toA.localeCompare(toB, 'zh-Hant');
+      if (toCmp !== 0) {
+        return toCmp;
+      }
+
+      // 4. 狀態 (升冪 ASC)
+      const statusWeight = {
+        '0': 0, '1': 1, '2': 2, '4': 3, '3': 4
+      };
+      const statusA = statusWeight[String(resolveRecordStatus(a))] ?? 99;
+      const statusB = statusWeight[String(resolveRecordStatus(b))] ?? 99;
+      return statusA - statusB;
+    }
+
+    /**
+     * 判斷部門是否為排除之來源廠 (來源廠不包含工程部與物流部，同步 index.html)
+     */
+    function isExcludedSourceDept(d) {
+      if (!d) return false;
+      const deptId = String(d.deptId || d.id || '').trim().toUpperCase();
+      const deptName = String(d.deptName || d.name || '').trim();
+      return deptId === 'JW001' || deptId === 'JL001' || deptName.includes('工程部') || deptName.includes('物流部');
+    }
+
+    /**
+     * 動態載入廠別清單 (/api/departments)
+     */
+    async function loadDepartments() {
+      try {
+        const res = await API.get('/api/departments');
+        const deptList = (res && Array.isArray(res.data)) ? res.data : (Array.isArray(res) ? res : []);
+        
+        const $fromSelect = $('#filterFromPlant');
+        const $toSelect = $('#filterToPlant');
+        $fromSelect.empty();
+        $toSelect.empty();
+
+        // 來源廠排除「工程部」與「物流部」(同步 index.html)
+        const sourceDeptList = deptList.filter(d => !isExcludedSourceDept(d));
+        sourceDeptList.forEach(dept => {
+          const optVal = dept.deptId || dept.deptName;
+          const optText = dept.deptName || dept.deptId;
+          $fromSelect.append(new Option(optText, optVal));
+        });
+
+        // 目的廠保留全廠別選項 (包含工程部與物流部)
+        deptList.forEach(dept => {
+          const optVal = dept.deptId || dept.deptName;
+          const optText = dept.deptName || dept.deptId;
+          $toSelect.append(new Option(optText, optVal));
+        });
+
+        // 重新整理 Select2
+        $fromSelect.trigger('change.select2');
+        $toSelect.trigger('change.select2');
+      } catch (err) {
+        console.warn('[Department] 載入部門失敗:', err);
+        const $fromSelect = $('#filterFromPlant');
+        const $toSelect = $('#filterToPlant');
+        $fromSelect.empty();
+        $toSelect.empty();
+        $fromSelect.trigger('change.select2');
+        $toSelect.trigger('change.select2');
+      }
+    }
+
+    let fpFilterStartTime = null;
+    let fpFilterEndTime = null;
+
+    /**
+     * 呼叫後端 API 取得報表資料並渲染
+     */
+    async function applyReportFilters() {
+      const startDate = document.getElementById('filterStartDate').value;
+      const endDate = document.getElementById('filterEndDate').value;
+      const fromPlants = $('#filterFromPlant').val() || [];
+      const toPlants = $('#filterToPlant').val() || [];
+      const statuses = $('#filterStatus').val() || [];
+      const keyword = (document.getElementById('filterKeyword').value || '').trim();
+      const startTime = (document.getElementById('filterStartTime').value || '').trim();
+      const endTime = (document.getElementById('filterEndTime').value || '').trim();
+
+      const resultCountEl = document.getElementById('filterResultCount');
+      resultCountEl.innerHTML = '<span class="spinner-border spinner-border-sm me-1 text-primary"></span> 正在查詢資料...';
+
+      const queryParams = {};
+      if (startDate) queryParams.startDate = startDate;
+      if (endDate) queryParams.endDate = endDate;
+      if (fromPlants.length > 0) queryParams.sourceDeptId = fromPlants.join(',');
+      if (toPlants.length > 0) queryParams.targetDeptId = toPlants.join(',');
+      if (statuses.length > 0) queryParams.status = statuses.join(',');
+      if (keyword) queryParams.keyword = keyword;
+      if (startTime) queryParams.startTime = startTime;
+      if (endTime) queryParams.endTime = endTime;
+
+      try {
+        const res = await API.get('/api/reports', queryParams);
+        let records = (res && Array.isArray(res.data)) ? res.data : [];
+
+        // 進行前端狀態校驗 (處理未簽到在當日超過調度結束時間動態標記已逾期)
+        records = records.map(item => ({
+          ...item,
+          status: resolveRecordStatus(item),
+          sourceDeptName: item.sourceDeptName || item.fromPlant,
+          targetDeptName: item.targetDeptName || item.toPlant
+        }));
+
+        // 套用預設多維度複合排序 (調派日期 DESC -> 來源廠 ASC -> 目的廠 ASC -> 狀態 ASC)
+        records.sort(multiColumnComparator);
+
+        resultCountEl.innerText = `共查詢到 ${records.length} 筆資料`;
+        $('#reportTable').bootstrapTable('load', records);
+      } catch (err) {
+        console.error('[Report] 查詢失敗:', err);
+        resultCountEl.innerText = '查詢失敗，請稍後再試';
+        showToast('查詢失敗: ' + (err.message || '無法連線伺服器'), true);
+        $('#reportTable').bootstrapTable('load', []);
+      }
+    }
+
+    /**
+     * 清空篩選條件 (日期重設為當天)
+     */
+    function resetFilters() {
+      const today = getFormattedDate(0);
+      document.getElementById('filterStartDate').value = today;
+      document.getElementById('filterEndDate').value = today;
+      document.getElementById('filterKeyword').value = '';
+      if (fpFilterStartTime) fpFilterStartTime.clear();
+      else document.getElementById('filterStartTime').value = '';
+      if (fpFilterEndTime) fpFilterEndTime.clear();
+      else document.getElementById('filterEndTime').value = '';
+      $('#filterFromPlant').val(null).trigger('change.select2');
+      $('#filterToPlant').val(null).trigger('change.select2');
+      $('#filterStatus').val(null).trigger('change.select2');
+      applyReportFilters();
+      showToast('已重設為當日查詢條件');
+    }
+
+    /**
+     * 原生 Excel (.xlsx) 活頁簿匯出功能 (完全依據當前篩選渲染結果)
+     */
+    function exportToExcel() {
+      const targetRecords = $('#reportTable').bootstrapTable('getData');
+      if (!targetRecords || targetRecords.length === 0) {
+        showToast('目前無任何符合的資料可匯出', true);
+        return;
+      }
+
+      if (typeof XLSX === 'undefined') {
+        showToast('匯出失敗：Excel 模組未正確載入', true);
+        return;
+      }
+
+      const headers = [
+        '調派單號',
+        '調派日期',
+        '來源廠',
+        '目的廠',
+        '工號',
+        '姓名',
+        '狀態',
+        '調度時間起訖',
+        '簽到時間',
+        '確認人',
+        '異常說明'
+      ];
+
+      const statusMap = {
+        '0': '待簽到',
+        '1': '已簽到',
+        '2': '逾期簽到',
+        '3': '異常',
+        '4': '已逾期'
+      };
+
+      const rows = targetRecords.map(r => {
+        const currentStatus = resolveRecordStatus(r);
+        return [
+          r.planNo || r.id || '',
+          r.dispatchDate || '',
+          r.sourceDeptName || r.fromPlant || '',
+          r.targetDeptName || r.toPlant || '',
+          r.empId || '',
+          r.empName || '',
+          statusMap[currentStatus] || currentStatus,
+          r.dispatchTimeRange || '',
+          formatCheckinTime(r.checkinTime) === '-' ? '' : formatCheckinTime(r.checkinTime),
+          r.receiverName || '',
+          r.anomalyNote || ''
+        ];
+      });
+
+      // 建立 Sheet
+      const worksheetData = [headers, ...rows];
+      const ws = XLSX.utils.aoa_to_sheet(worksheetData);
+
+      // 動態計算各欄適當寬度
+      const colWidths = headers.map((header, colIdx) => {
+        let maxLen = header.length * 2;
+        rows.forEach(row => {
+          const cellVal = String(row[colIdx] || '');
+          const cellLen = cellVal.replace(/[^\x00-\xff]/g, 'xx').length;
+          if (cellLen > maxLen) maxLen = cellLen;
+        });
+        return { wch: Math.min(Math.max(maxLen + 3, 10), 45) };
+      });
+      ws['!cols'] = colWidths;
+
+      // 建立 Workbook 並儲存
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '跨廠調派明細');
+      XLSX.writeFile(wb, `跨廠調派明細報表_${getFormattedDate(0)}.xlsx`);
+
+      showToast(`已成功匯出 ${targetRecords.length} 筆 Excel 報表資料`);
+    }
+
+    // 初始化頁面
+    $(async function () {
+      // 驗證登入身分
+      if (window.Auth && typeof Auth.requireAuth === 'function') {
+        const user = Auth.requireAuth();
+        if (!user) return;
+        Auth.renderNavbarUser('#navbarUserArea');
+      }
+
+      // 初始化預設起訖日期為「當天」
+      const today = getFormattedDate(0);
+      document.getElementById('filterStartDate').value = today;
+      document.getElementById('filterEndDate').value = today;
+
+      // 初始化 24 小時制時間選擇器 (Flatpickr)
+      fpFilterStartTime = flatpickr('#filterStartTime', {
+        enableTime: true,
+        noCalendar: true,
+        dateFormat: 'H:i',
+        time_24hr: true,
+        minuteIncrement: 5,
+        onClose: function () { applyReportFilters(); }
+      });
+      fpFilterEndTime = flatpickr('#filterEndTime', {
+        enableTime: true,
+        noCalendar: true,
+        dateFormat: 'H:i',
+        time_24hr: true,
+        minuteIncrement: 5,
+        onClose: function () { applyReportFilters(); }
+      });
+
+      // 初始化 Select2 多選下拉選單
+      $('#filterFromPlant, #filterToPlant, #filterStatus').select2({
+        theme: 'bootstrap-5',
+        width: '100%',
+        language: 'zh-TW',
+        allowClear: true,
+        placeholder: function () {
+          return $(this).data('placeholder');
+        }
+      }).on('change', function () {
+        applyReportFilters();
+      });
+
+      // 初始化 Bootstrap Table
+      $('#reportTable').bootstrapTable({
+        locale: 'zh-TW',
+        sortReset: true
+      });
+
+      // 動態載入廠別清單
+      await loadDepartments();
+
+      // 執行初始報表查詢 (預設查詢當天單據)
+      await applyReportFilters();
+    });
+  </script>
+</body>
+
+</html>

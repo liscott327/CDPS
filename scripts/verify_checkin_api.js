@@ -24,15 +24,36 @@ const server = app.listen(0, async () => {
         'Authorization': `Bearer ${token}`
     };
 
+    const now = new Date();
+    const todayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const otherDate = '2026-10-28';
+
     try {
         console.log('Testing Checkin APIs...');
 
         // 1. GET /records
-        const r1 = await fetch(`${baseUrl}/records?deptId=JMB03&dispatchDate=2026-10-21`, { headers });
+        const r1 = await fetch(`${baseUrl}/records?deptId=JMB03&dispatchDate=${todayDate}`, { headers });
         const d1 = await r1.json();
         assert.strictEqual(d1.success, true);
         assert.ok(Array.isArray(d1.data));
         console.log('✅ GET /records OK, count =', d1.data.length);
+
+        // 1-1. 非當日簽到阻擋測試 (Ex: 10/28 調度，當天 10/27 來刷)
+        const rNonToday = await fetch(`${baseUrl}/scan`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                deptId: 'JMB03',
+                dispatchDate: otherDate,
+                empId: 'JM10007',
+                currentTime: '14:05'
+            })
+        });
+        const dNonToday = await rNonToday.json();
+        assert.strictEqual(rNonToday.status, 400);
+        assert.strictEqual(dNonToday.type, 'TIME_ERROR');
+        assert.ok(dNonToday.message.includes('非當日調度時間'));
+        console.log('✅ POST /scan 非當日簽到阻擋 OK (TIME_ERROR, 非簽到時間)');
 
         // 2. POST /scan - 準時 (14:05)
         const r2 = await fetch(`${baseUrl}/scan`, {
@@ -40,7 +61,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 deptId: 'JMB03',
-                dispatchDate: '2026-10-21',
+                dispatchDate: todayDate,
                 empId: 'JM10007',
                 currentTime: '14:05'
             })
@@ -56,7 +77,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 deptId: 'JMB03',
-                dispatchDate: '2026-10-21',
+                dispatchDate: todayDate,
                 empId: 'JM10007',
                 currentTime: '14:08'
             })
@@ -70,7 +91,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 deptId: 'JMB03',
-                dispatchDate: '2026-10-21',
+                dispatchDate: todayDate,
                 empId: 'JM10008',
                 currentTime: '13:55'
             })
@@ -89,7 +110,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 deptId: 'JMB03',
-                dispatchDate: '2026-10-21',
+                dispatchDate: todayDate,
                 empId: 'JM10020',
                 currentTime: '07:55'
             })
@@ -106,7 +127,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 deptId: 'JMB03',
-                dispatchDate: '2026-10-21',
+                dispatchDate: todayDate,
                 empId: 'JM10020',
                 currentTime: '08:05'
             })
@@ -123,7 +144,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 deptId: 'JMB03',
-                dispatchDate: '2026-10-21',
+                dispatchDate: todayDate,
                 empId: 'JM10020',
                 currentTime: '12:15'
             })
@@ -140,7 +161,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 deptId: 'JMB03',
-                dispatchDate: '2026-10-21',
+                dispatchDate: todayDate,
                 empId: 'JM10020',
                 currentTime: '13:20'
             })
@@ -157,7 +178,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 deptId: 'JMB03',
-                dispatchDate: '2026-10-21',
+                dispatchDate: todayDate,
                 empId: 'JM10020',
                 currentTime: '13:25'
             })
@@ -173,6 +194,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 detailId: 104,
+                dispatchDate: todayDate,
                 currentTime: '14:15'
             })
         });
@@ -187,6 +209,7 @@ const server = app.listen(0, async () => {
             headers,
             body: JSON.stringify({
                 empId: 'JM10008',
+                dispatchDate: todayDate,
                 currentTime: '14:05'
             })
         });
